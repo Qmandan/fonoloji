@@ -70,12 +70,13 @@ function render(c, P, A, T) {
   if (n) h += `<div class="g">${kv("Son " + n + " gün yön isabeti", hit + " / " + n)}${kv("Ortalama mutlak hata", "%" + mae.toFixed(2) + " puan")}${kv("Ortalama sapma (tahmin − gerçek)", f2(bias) + " puan")}</div><div class="w">Bu doğruluk, Fonoloji’nin geçmiş tahminlerinin gerçekleşenle karşılaştırmasıdır; gelecekte aynı doğrulukta olacağını garanti etmez.</div>`;
   h += "</div>";
   // sinyal ve akış
+  const used = new Set();
   let flows = [];
   for (let i = Math.max(1, pts.length - 15); i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i], fl = b.total_value - a.total_value * (b.price / a.price), di = b.investor_count - a.investor_count;
     const avg = a.total_value / a.investor_count, pct = fl / a.total_value * 100;
     const whale = Math.abs(pct) >= 2 || (Math.abs(pct) >= 0.5 && Math.abs(fl) / Math.max(1, Math.abs(di)) >= 5 * avg);
-    flows.push({d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
+    flows.push({ret: (b.price / a.price - 1) * 100, es: (() => { const q = hist.find(x => !used.has(x) && Math.abs(x.actual_change_pct - (b.price / a.price - 1) * 100) < 0.02); if (q) used.add(q); return q; })(), d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
   }
   const tot = flows.reduce((s, r) => s + r.fl, 0);
   const ma = k => pts.length >= k ? pts.slice(-k).reduce((s, x) => s + x.price, 0) / k : null, P0 = pts.length ? pts[pts.length - 1].price : null;
@@ -85,9 +86,9 @@ function render(c, P, A, T) {
   h += `<div class="card"><b>Kural tabanlı sinyal: <span class="${sc >= 3 ? "up" : sc <= -3 ? "dn" : ""}">${lab}</span></b> <span class="m">(skor ${sc} / ±5)</span>`;
   sg.forEach(x => h += `<div style="display:flex;justify-content:space-between"><span>${x[0]}</span><span class="${x[1] ? "up" : x[1] === false ? "dn" : "m"}">${x[1] ? "Evet" : x[1] === false ? "Hayır" : "Veri yok"}</span></div>`);
   h += '<div class="w">Geçmiş fiyat ve akışa bakan basit bir kuraldır; geleceği öngörmez ve yatırım tavsiyesi değildir.</div></div>';
-  h += `<div class="card"><b>Son 15 gün para akışı ve yatırımcı</b><div class="g">${kv("Toplam net akış (TL)", f2(tot, 0), cl(tot))}${kv("Yatırımcı değişimi", f2(flows.reduce((s, r) => s + r.di, 0), 0))}${kv("Kişi başı ort. (TL)", n0(F.aum / F.investors))}</div><table><tr><th>Tarih</th><th>Fiyat</th><th>Fon büyüklüğü</th><th>Yatırımcı</th><th>Δ</th><th>Tahmini net akış (TL)</th><th>% fon</th><th>Balina?</th></tr>`;
-  flows.slice().reverse().forEach(r => h += `<tr><td>${r.d}</td><td>${r.p.toFixed(4)}</td><td>${n0(r.v)}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td><td class="${cl(r.fl)}">${f2(r.fl, 0)}</td><td>${f2(r.pct)}</td><td>${r.whale ? (r.fl < 0 ? "Balina çıkışı olası" : "Balina girişi olası") : "—"}</td></tr>`);
-  h += '</table><div class="w">Net akış = fon büyüklüğündeki değişim − fiyat etkisi (yaklaşık). “Balina” etiketi; akış fonun %2’sinden büyükse ya da yatırımcı değişimine göre kişi başı tutar ortalamanın 5 katını aşıyorsa konur. Tek tek yatırımcılar görülmez.</div></div>';
+  h += `<div class="card"><b>Son 15 gün: günlük getiri, para akışı ve yatırımcı</b><div class="g">${kv("Toplam net akış (TL)", f2(tot, 0), cl(tot))}${kv("Yatırımcı değişimi", f2(flows.reduce((s, r) => s + r.di, 0), 0))}${kv("Kişi başı ort. (TL)", n0(F.aum / F.investors))}${kv("15 gün getiri", f2((flows.reduce((m, r) => m * (1 + r.ret / 100), 1) - 1) * 100) + "%", cl(flows.reduce((m, r) => m + r.ret, 0)))}${kv("En iyi gün", f2(Math.max(...flows.map(r => r.ret))) + "%", "up")}${kv("En kötü gün", f2(Math.min(...flows.map(r => r.ret))) + "%", "dn")}</div><table><tr><th>Tarih</th><th>Günlük getiri %</th><th>Fonoloji tahmini % (eşleşen gün)</th><th>Fiyat</th><th>Fon büyüklüğü</th><th>Yatırımcı</th><th>Δ</th><th>Tahmini net akış (TL)</th><th>% fon</th><th>Balina?</th></tr>`;
+  flows.slice().reverse().forEach(r => h += `<tr><td>${r.d}</td><td class="${cl(r.ret)}">${f2(r.ret)}</td><td>${r.es ? f2(r.es.estimated_change_pct) : "—"}</td><td>${r.p.toFixed(4)}</td><td>${n0(r.v)}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td><td class="${cl(r.fl)}">${f2(r.fl, 0)}</td><td>${f2(r.pct)}</td><td>${r.whale ? (r.fl < 0 ? "Balina çıkışı olası" : "Balina girişi olası") : "—"}</td></tr>`);
+  h += '</table><div class="w">Fiyat serisindeki tarihler Fonoloji’nin tahmin kaydından bir iş günü kayık olduğu için tahmin, gerçekleşen getiri değerine göre eşleştirilir; eşleşmeyen günde “—” görünür. Net akış = fon büyüklüğündeki değişim − fiyat etkisi (yaklaşık). “Balina” etiketi; akış fonun %2’sinden büyükse ya da yatırımcı değişimine göre kişi başı tutar ortalamanın 5 katını aşıyorsa konur. Tek tek yatırımcılar görülmez.</div></div>';
   // varlıklar
   const comp = {}; (E.components || []).forEach(x => comp[x.ticker] = x);
   const prev = {}; (H.previousItems || []).forEach(x => prev[x.asset_code || x.asset_name] = x.weight);
