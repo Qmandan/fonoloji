@@ -13,14 +13,15 @@ pre{white-space:pre-wrap;word-break:break-all;background:rgba(127,127,127,.15);p
 </head>
 <body>
 <h1>Fonoloji bağlantı testi</h1>
-<p>Erişim kodunu ve bir fon kodunu yaz, sonra bir düğmeye bas. Çıkan yazıyı kopyalayıp Claude’a yapıştır.</p>
+<p>Erişim kodunu ve fon kodunu yaz, bir veri düğmesine bas. Ekranda <b>özet</b> görünür. <b>İndir</b> düğmesi tam veriyi .txt dosyası olarak kaydeder, bu dosyayı Claude sohbetine ek olarak yükleyebilirsin.</p>
 <input id="app" type="password" placeholder="Erişim kodu">
 <input id="code" placeholder="Fon kodu" value="ECA"><br>
 <button data-e="info">Fon bilgisi</button>
 <button data-e="port">Portföy</button>
 <button data-e="ana">Analiz</button>
-<button data-e="ts">Zaman serisi</button>
-<button id="copy">Kopyala</button>
+<button data-e="ts">Zaman serisi</button><br>
+<button id="copy">Özeti kopyala</button>
+<button id="dl">Tam veriyi indir (.txt)</button>
 <pre id="out">Henüz bir şey seçilmedi.</pre>
 <script>
 const E = {
@@ -30,20 +31,40 @@ const E = {
   ts: "/funds/{c}/timeseries?include=nav,allocation-history"
 };
 const out = document.getElementById("out");
+let full = "", name = "veri";
+function trim(v) {
+  if (Array.isArray(v)) {
+    const a = v.slice(0, 2).map(trim);
+    if (v.length > 2) a.push("… toplam " + v.length + " öğe");
+    return a;
+  }
+  if (v && typeof v === "object") { const o = {}; for (const k in v) o[k] = trim(v[k]); return o; }
+  if (typeof v === "string" && v.length > 80) return v.slice(0, 80) + "…";
+  return v;
+}
 document.querySelectorAll("button[data-e]").forEach(b => b.onclick = async () => {
   const c = document.getElementById("code").value.trim().toUpperCase();
   const [path, qs] = E[b.dataset.e].replace("{c}", c).split("?");
   const url = "/api/fonoloji?path=" + encodeURIComponent(path) + (qs ? "&" + qs : "");
   out.textContent = "Yükleniyor…";
+  name = c + "-" + b.dataset.e;
   try {
     const r = await fetch(url, { headers: { "x-app-code": document.getElementById("app").value } });
     const t = await r.text();
+    full = "HTTP " + r.status + "\n" + t;
     let body = t;
-    try { body = JSON.stringify(JSON.parse(t), null, 1); } catch (e) {}
-    out.textContent = "HTTP " + r.status + "\n" + body;
-  } catch (e) { out.textContent = "Hata: " + e.message; }
+    try { body = JSON.stringify(trim(JSON.parse(t)), null, 1); } catch (e) { body = t.slice(0, 2000); }
+    out.textContent = "HTTP " + r.status + " (özet)\n" + body;
+  } catch (e) { out.textContent = "Hata: " + e.message; full = ""; }
 });
 document.getElementById("copy").onclick = () => navigator.clipboard.writeText(out.textContent);
+document.getElementById("dl").onclick = () => {
+  if (!full) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([full], { type: "text/plain" }));
+  a.download = name + ".txt";
+  a.click();
+};
 </script>
 </body>
 </html>
