@@ -45,15 +45,16 @@ async function run() {
   localStorage.setItem("ac", $("ac").value);
   $("out").innerHTML = '<div class="card m">Yükleniyor…</div>';
   try {
-    const [P, A, T] = await Promise.all([
+    const [P, A, T, I] = await Promise.all([
       api(`/funds/${c}/portfolio`, "include=allocation,holdings,dates"),
       api(`/funds/${c}/analysis`, "include=estimate,estimate-accuracy,disclosures"),
-      api(`/funds/${c}/timeseries`, "include=nav")
+      api(`/funds/${c}/timeseries`, "include=nav"),
+      api(`/funds/${c}`).catch(() => null)
     ]);
-    $("out").innerHTML = render(c, P, A, T);
+    $("out").innerHTML = render(c, P, A, T, I);
   } catch (e) { $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
-function render(c, P, A, T) {
+function render(c, P, A, T, I) {
   const F = (P.allocation || {}).fund || {}, H = P.holdings || {}, E = ((A.estimate || {}).estimate) || {}, AC = A["estimate-accuracy"] || {}, pts = ((T.nav || {}).points) || [];
   const pub = H.latestPublishDate, age = pub ? Math.floor((Date.now() - pub) / 864e5) : null;
   const latest = ((P.dates || {}).items || [])[0], fresh = latest && H.latestPeriod ? latest.report_date === H.latestPeriod : null;
@@ -79,13 +80,23 @@ function render(c, P, A, T) {
     flows.push({ret: (b.price / a.price - 1) * 100, es: (() => { const q = hist.find(x => !used.has(x) && Math.abs(x.actual_change_pct - (b.price / a.price - 1) * 100) < 0.02); if (q) used.add(q); return q; })(), d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
   }
   const tot = flows.reduce((s, r) => s + r.fl, 0);
-  const ma = k => pts.length >= k ? pts.slice(-k).reduce((s, x) => s + x.price, 0) / k : null, P0 = pts.length ? pts[pts.length - 1].price : null;
-  const r1m = pts.length > 21 ? P0 / pts[pts.length - 22].price - 1 : null;
-  const sg = [["Fiyat 30 g. ortalamanın üstünde", ma(30) != null ? P0 > ma(30) : null], ["Fiyat 90 g. ortalamanın üstünde", ma(90) != null ? P0 > ma(90) : null], ["Fiyat 200 g. ortalamanın üstünde", ma(200) != null ? P0 > ma(200) : null], ["Son 1 ay getirisi pozitif", r1m != null ? r1m > 0 : null], ["Son 15 gün net para girişi", flows.length ? tot > 0 : null]];
-  const sc = sg.reduce((s, x) => s + (x[1] === true ? 1 : x[1] === false ? -1 : 0), 0), lab = sc >= 3 ? "AL eğilimi" : sc <= -3 ? "SAT eğilimi" : "TUT / nötr";
-  h += `<div class="card"><b>Kural tabanlı sinyal: <span class="${sc >= 3 ? "up" : sc <= -3 ? "dn" : ""}">${lab}</span></b> <span class="m">(skor ${sc} / ±5)</span>`;
-  sg.forEach(x => h += `<div style="display:flex;justify-content:space-between"><span>${x[0]}</span><span class="${x[1] ? "up" : x[1] === false ? "dn" : "m"}">${x[1] ? "Evet" : x[1] === false ? "Hayır" : "Veri yok"}</span></div>`);
-  h += '<div class="w">Geçmiş fiyat ve akışa bakan basit bir kuraldır; geleceği öngörmez ve yatırım tavsiyesi değildir.</div></div>';
+  const Pr = pts.map(x => x.price), Vl = pts.map(x => x.total_value), N = pts.length;
+  const mav = (i, k) => Pr.slice(i - k + 1, i + 1).reduce((q, x) => q + x, 0) / k;
+  const scoreAt = i => { let fl = 0; for (let j = i - 14; j <= i; j++) fl += Vl[j] - Vl[j - 1] * Pr[j] / Pr[j - 1]; return [Pr[i] > mav(i, 30), Pr[i] > mav(i, 60), Pr[i] / Pr[i - 20] > 1, fl > 0].map(x => x ? 1 : -1); };
+  const names = ["Fiyat 30 günlük ortalamanın üstünde", "Fiyat 60 günlük ortalamanın üstünde", "Son 20 gün getirisi pozitif", "Son 15 gün net para girişi"];
+  const lastS = N > 61 ? scoreAt(N - 1) : null, sc = lastS ? lastS.reduce((q, x) => q + x, 0) : null;
+  const lab = sc == null ? "Veri yetersiz" : sc === 4 ? "AL eğilimi" : sc === -4 ? "SAT eğilimi" : "TUT / karışık";
+  const dr = []; for (let i = Math.max(1, N - 60); i < N; i++) dr.push(Pr[i] / Pr[i - 1] - 1);
+  const mu = dr.reduce((q, x) => q + x, 0) / (dr.length || 1), sd = dr.length > 10 ? Math.sqrt(dr.reduce((q, x) => q + (x - mu) ** 2, 0) / dr.length) * Math.sqrt(3) * 100 : null;
+  const Fi = (I && I.fund) || {};
+  h += `<div class="card"><b>Kural tabanlı sinyal: <span class="${sc === 4 ? "up" : sc === -4 ? "dn" : ""}">${lab}</span></b> <span class="m">(AL: dört ölçüt de olumlu, SAT: dördü de olumsuz)</span>`;
+  if (lastS) lastS.forEach((x, k) => h += `<div style="display:flex;justify-content:space-between"><span>${names[k]}</span><span class="${x > 0 ? "up" : "dn"}">${x > 0 ? "Evet" : "Hayır"}</span></div>`);
+  h += `<div class="g">${kv("Alış valörü", Fi.buy_valor == null ? "—" : "T+" + Fi.buy_valor)}${kv("Satış valörü", Fi.sell_valor == null ? "—" : "T+" + Fi.sell_valor)}${kv("3 iş günü olası aralık (±1σ)", sd == null ? "—" : "±%" + sd.toFixed(2))}${kv("±2σ (yaklaşık %95)", sd == null ? "—" : "±%" + (2 * sd).toFixed(2))}</div>`;
+  const grp = {AL: [], SAT: [], TUT: [], all: []};
+  for (let i = 60; i < N - 3; i++) { const q = scoreAt(i).reduce((u, x) => u + x, 0), r = Pr[i + 3] / Pr[i] - 1; grp.all.push(r); (q === 4 ? grp.AL : q === -4 ? grp.SAT : grp.TUT).push(r); }
+  const sm = a => a.length ? `${a.length} gün · ort. %${f2(a.reduce((q, x) => q + x, 0) / a.length * 100)} · pozitif %${Math.round(a.filter(x => x > 0).length / a.length * 100)}` : "örnek yok";
+  if (grp.all.length > 20) h += `<div class="g">${kv("Bu fonun geçmişi: tüm günler → sonraki 3 gün", sm(grp.all))}${kv("AL günleri → sonraki 3 gün", sm(grp.AL))}${kv("SAT günleri → sonraki 3 gün", sm(grp.SAT))}${kv("Karışık günler → sonraki 3 gün", sm(grp.TUT))}</div><div class="w">Geri test, bu fonun kendi fiyat geçmişindedir. 3 günlük pencereler üst üste bindiği için bağımsız örnek sayısı yaklaşık üçte birdir; tek dönem ve tek fon olduğundan genellenemez. AL günlerinin ortalaması “tüm günler”den belirgin yüksek değilse sinyal bir şey eklemiyor demektir. Haber, KAP bildirimi ve bilanço bilgisi sinyale dahil değildir; geçmişi olmadığı için test edilemez.</div>`;
+  h += '<div class="w">Geçmiş fiyat ve akışa bakan basit bir kuraldır; 3 gün sonrasını öngörmez ve yatırım tavsiyesi değildir.</div></div>';
   h += `<div class="card"><b>Son 15 gün: günlük getiri, para akışı ve yatırımcı</b><div class="g">${kv("Toplam net akış (TL)", f2(tot, 0), cl(tot))}${kv("Yatırımcı değişimi", f2(flows.reduce((s, r) => s + r.di, 0), 0))}${kv("Kişi başı ort. (TL)", n0(F.aum / F.investors))}${kv("15 gün getiri", f2((flows.reduce((m, r) => m * (1 + r.ret / 100), 1) - 1) * 100) + "%", cl(flows.reduce((m, r) => m + r.ret, 0)))}${kv("En iyi gün", f2(Math.max(...flows.map(r => r.ret))) + "%", "up")}${kv("En kötü gün", f2(Math.min(...flows.map(r => r.ret))) + "%", "dn")}</div><table><tr><th>Tarih</th><th>Günlük getiri %</th><th>Fonoloji tahmini % (eşleşen gün)</th><th>Fiyat</th><th>Fon büyüklüğü</th><th>Yatırımcı</th><th>Δ</th><th>Tahmini net akış (TL)</th><th>% fon</th><th>Balina?</th></tr>`;
   flows.slice().reverse().forEach(r => h += `<tr><td>${r.d}</td><td class="${cl(r.ret)}">${f2(r.ret)}</td><td>${r.es ? f2(r.es.estimated_change_pct) : "—"}</td><td>${r.p.toFixed(4)}</td><td>${n0(r.v)}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td><td class="${cl(r.fl)}">${f2(r.fl, 0)}</td><td>${f2(r.pct)}</td><td>${r.whale ? (r.fl < 0 ? "Balina çıkışı olası" : "Balina girişi olası") : "—"}</td></tr>`);
   h += '</table><div class="w">Fiyat serisindeki tarihler Fonoloji’nin tahmin kaydından bir iş günü kayık olduğu için tahmin, gerçekleşen getiri değerine göre eşleştirilir; eşleşmeyen günde “—” görünür. Net akış = fon büyüklüğündeki değişim − fiyat etkisi (yaklaşık). “Balina” etiketi; akış fonun %2’sinden büyükse ya da yatırımcı değişimine göre kişi başı tutar ortalamanın 5 katını aşıyorsa konur. Tek tek yatırımcılar görülmez.</div></div>';
