@@ -40,10 +40,10 @@ async function api(path, qs) {
   if (!r.ok) throw new Error(r.status === 401 ? "Erişim kodu yanlış." : (j && j.error) || "HTTP " + r.status);
   return j;
 }
-async function run() {
+async function run(quiet) {
   const c = $("code").value.trim().toUpperCase(); if (!c) return;
   localStorage.setItem("ac", $("ac").value);
-  $("out").innerHTML = '<div class="card m">Yükleniyor…</div>';
+  if (!quiet) $("out").innerHTML = '<div class="card m">Yükleniyor…</div>';
   try {
     const [P, A, T, I] = await Promise.all([
       api(`/funds/${c}/portfolio`, "include=allocation,holdings,dates"),
@@ -51,8 +51,8 @@ async function run() {
       api(`/funds/${c}/timeseries`, "include=nav"),
       api(`/funds/${c}`).catch(() => null)
     ]);
-    $("out").innerHTML = render(c, P, A, T, I);
-  } catch (e) { $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
+    $("out").innerHTML = `<div class="m">Son güncelleme: ${new Date().toLocaleTimeString("tr-TR")} · sayfa açıkken 10 dakikada bir yenilenir</div>` + render(c, P, A, T, I);
+  } catch (e) { if (!quiet) $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
 function render(c, P, A, T, I) {
   const F = (P.allocation || {}).fund || {}, H = P.holdings || {}, E = ((A.estimate || {}).estimate) || {}, AC = A["estimate-accuracy"] || {}, pts = ((T.nav || {}).points) || [];
@@ -114,7 +114,8 @@ function render(c, P, A, T, I) {
   ((A.disclosures || {}).items || []).slice(0, 8).forEach(x => h += `<tr><td style="white-space:normal;text-align:left"><a href="https://www.kap.org.tr/tr/Bildirim/${x.disclosure_index}" target="_blank" rel="noopener">${esc(x.subject)}</a></td><td>${dt(x.publish_date)}</td></tr>`);
   return h + "</table></div>";
 }
-$("go").onclick = run;
+$("go").onclick = () => run();
+setInterval(() => { if (!document.hidden && $("code").value.trim() && $("out").children.length) run(true); }, 600000);
 $("code").addEventListener("keydown", e => { if (e.key === "Enter") run(); });
 </script>
 </body>
