@@ -3,68 +3,107 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fonoloji bağlantı testi</title>
+<title>Fon Analiz</title>
 <style>
-:root{color-scheme:light dark}
-body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px}
-input,button{font:inherit;padding:10px;margin:4px 4px 4px 0}
-pre{white-space:pre-wrap;word-break:break-all;background:rgba(127,127,127,.15);padding:12px;border-radius:8px;max-height:60vh;overflow:auto;font-size:12px}
+:root{color-scheme:light dark;--bg:#f5f6f8;--c:#fff;--t:#14181f;--m:#667085;--b:#e2e5ea;--up:#0a8f4e;--dn:#d1332b;--ac:#2557d6;--wn:#a85f00;--wb:#fff4e0}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--c:#171b22;--t:#e9ecf1;--m:#98a2b3;--b:#2a303a;--up:#3ddc84;--dn:#ff6b62;--ac:#7aa2ff;--wn:#ffc266;--wb:#2b2312}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.5 system-ui,sans-serif}
+main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:20px;margin:4px 0}
+.card{background:var(--c);border:1px solid var(--b);border-radius:14px;padding:14px;margin:12px 0;overflow-x:auto}
+.row{display:flex;gap:8px;flex-wrap:wrap}input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--b);background:var(--bg);color:var(--t)}
+button{background:var(--ac);color:#fff;border:0;font-weight:600}.m{color:var(--m);font-size:13px}.big{font-size:34px;font-weight:700;line-height:1.1}
+.up{color:var(--up)}.dn{color:var(--dn)}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0}
+.k{font-size:12px;color:var(--m)}.v{font-weight:600}.w{background:var(--wb);color:var(--wn);border-radius:10px;padding:9px 12px;margin:8px 0;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--b);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
 </style>
 </head>
 <body>
-<h1>Fonoloji bağlantı testi</h1>
-<p>Erişim kodunu ve fon kodunu yaz, bir veri düğmesine bas. Ekranda <b>özet</b> görünür. <b>İndir</b> düğmesi tam veriyi .txt dosyası olarak kaydeder, bu dosyayı Claude sohbetine ek olarak yükleyebilirsin.</p>
-<input id="app" type="password" placeholder="Erişim kodu">
-<input id="code" placeholder="Fon kodu" value="ECA"><br>
-<button data-e="info">Fon bilgisi</button>
-<button data-e="port">Portföy</button>
-<button data-e="ana">Analiz</button>
-<button data-e="ts">Zaman serisi</button><br>
-<button id="copy">Özeti kopyala</button>
-<button id="dl">Tam veriyi indir (.txt)</button>
-<pre id="out">Henüz bir şey seçilmedi.</pre>
+<main>
+<h1>Fon Analiz</h1>
+<div class="m">KAP portföy raporu, günlük tahmin, para akışı ve sinyal. Veri: Fonoloji.</div>
+<div class="card"><div class="row"><input id="ac" type="password" placeholder="Erişim kodu"><input id="code" placeholder="Fon kodu" value="ECA" style="width:120px;text-transform:uppercase"><button id="go">Analiz et</button></div></div>
+<div id="out"></div>
+<div class="m" style="margin:16px 0">Bu bir tahmindir, yatırım tavsiyesi değildir. Ağırlıklar aylık KAP raporuna aittir.</div>
+</main>
 <script>
-const E = {
-  info: "/funds/{c}",
-  port: "/funds/{c}/portfolio?include=allocation,holdings,dates",
-  ana: "/funds/{c}/analysis?include=summary,estimate,estimate-accuracy,disclosures",
-  ts: "/funds/{c}/timeseries?include=nav,allocation-history"
-};
-const out = document.getElementById("out");
-let full = "", name = "veri";
-function trim(v) {
-  if (Array.isArray(v)) {
-    const a = v.slice(0, 2).map(trim);
-    if (v.length > 2) a.push("… toplam " + v.length + " öğe");
-    return a;
-  }
-  if (v && typeof v === "object") { const o = {}; for (const k in v) o[k] = trim(v[k]); return o; }
-  if (typeof v === "string" && v.length > 80) return v.slice(0, 80) + "…";
-  return v;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const n0 = n => n == null ? "—" : Math.round(n).toLocaleString("tr-TR");
+const f2 = (n, d = 2) => n == null || isNaN(n) ? "—" : (n > 0 ? "+" : "") + n.toLocaleString("tr-TR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const cl = n => n > 0 ? "up" : n < 0 ? "dn" : "";
+const kv = (k, v, c) => `<div><div class="k">${k}</div><div class="v ${c || ""}">${v}</div></div>`;
+const dt = ms => new Date(ms).toLocaleDateString("tr-TR", {day: "numeric", month: "short", year: "numeric"});
+$("ac").value = localStorage.getItem("ac") || "";
+async function api(path, qs) {
+  const r = await fetch("/api/fonoloji?path=" + encodeURIComponent(path) + (qs ? "&" + qs : ""), {headers: {"x-app-code": $("ac").value}});
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch (e) { j = null; }
+  if (!r.ok) throw new Error(r.status === 401 ? "Erişim kodu yanlış." : (j && j.error) || "HTTP " + r.status);
+  return j;
 }
-document.querySelectorAll("button[data-e]").forEach(b => b.onclick = async () => {
-  const c = document.getElementById("code").value.trim().toUpperCase();
-  const [path, qs] = E[b.dataset.e].replace("{c}", c).split("?");
-  const url = "/api/fonoloji?path=" + encodeURIComponent(path) + (qs ? "&" + qs : "");
-  out.textContent = "Yükleniyor…";
-  name = c + "-" + b.dataset.e;
+async function run() {
+  const c = $("code").value.trim().toUpperCase(); if (!c) return;
+  localStorage.setItem("ac", $("ac").value);
+  $("out").innerHTML = '<div class="card m">Yükleniyor…</div>';
   try {
-    const r = await fetch(url, { headers: { "x-app-code": document.getElementById("app").value } });
-    const t = await r.text();
-    full = "HTTP " + r.status + "\n" + t;
-    let body = t;
-    try { body = JSON.stringify(trim(JSON.parse(t)), null, 1); } catch (e) { body = t.slice(0, 2000); }
-    out.textContent = "HTTP " + r.status + " (özet)\n" + body;
-  } catch (e) { out.textContent = "Hata: " + e.message; full = ""; }
-});
-document.getElementById("copy").onclick = () => navigator.clipboard.writeText(out.textContent);
-document.getElementById("dl").onclick = () => {
-  if (!full) return;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([full], { type: "text/plain" }));
-  a.download = name + ".txt";
-  a.click();
-};
+    const [P, A, T] = await Promise.all([
+      api(`/funds/${c}/portfolio`, "include=allocation,holdings,dates"),
+      api(`/funds/${c}/analysis`, "include=estimate,estimate-accuracy,disclosures"),
+      api(`/funds/${c}/timeseries`, "include=nav")
+    ]);
+    $("out").innerHTML = render(c, P, A, T);
+  } catch (e) { $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
+}
+function render(c, P, A, T) {
+  const F = (P.allocation || {}).fund || {}, H = P.holdings || {}, E = ((A.estimate || {}).estimate) || {}, AC = A["estimate-accuracy"] || {}, pts = ((T.nav || {}).points) || [];
+  const pub = H.latestPublishDate, age = pub ? Math.floor((Date.now() - pub) / 864e5) : null;
+  const latest = ((P.dates || {}).items || [])[0], fresh = latest && H.latestPeriod ? latest.report_date === H.latestPeriod : null;
+  let h = `<div class="card"><b>${esc(F.name || c)}</b><div class="m">${esc(F.category)} · ${esc(F.manager)}</div><div class="g">${kv("Fon büyüklüğü (TL)", n0(F.aum))}${kv("Yatırımcı", n0(F.investors))}${kv("Risk (1-7)", esc(F.risk))}${kv("KAP rapor dönemi", esc(H.latestPeriod || "—"))}${kv("KAP’ta yayın", pub ? dt(pub) : "—")}${kv("Rapor yaşı", age == null ? "—" : age + " gün", age > 35 ? "dn" : "")}</div>`;
+  if (fresh === false) h += '<div class="w">Daha yeni bir rapor var; kullanılan liste eski olabilir.</div>';
+  if (age > 35) h += '<div class="w">Rapor 35 günden eski; yeni aylık rapor çıkmış olabilir.</div>';
+  h += "</div>";
+  // tahmin
+  const hist = AC.history || [], n = hist.length;
+  const hit = hist.filter(r => (r.estimated_change_pct > 0) === (r.actual_change_pct > 0)).length;
+  const mae = n ? hist.reduce((s, r) => s + Math.abs(r.estimated_change_pct - r.actual_change_pct), 0) / n : null;
+  const bias = n ? hist.reduce((s, r) => s + r.estimated_change_pct - r.actual_change_pct, 0) / n : null;
+  h += `<div class="card"><div class="k">Günlük getiri tahmini (Fonoloji)</div><div class="big ${cl(E.estimated_change_pct)}">%${f2(E.estimated_change_pct)}</div><div class="m">Seans: ${esc(E.seans_durumu || "—")} · güven ${E.confidence != null ? Math.round(E.confidence * 100) + "%" : "—"} · hisse kapsamı %${n0(E.stock_coverage_pct)}</div>`;
+  if (n) h += `<div class="g">${kv("Son " + n + " gün yön isabeti", hit + " / " + n)}${kv("Ortalama mutlak hata", "%" + mae.toFixed(2) + " puan")}${kv("Ortalama sapma (tahmin − gerçek)", f2(bias) + " puan")}</div><div class="w">Bu doğruluk, Fonoloji’nin geçmiş tahminlerinin gerçekleşenle karşılaştırmasıdır; gelecekte aynı doğrulukta olacağını garanti etmez.</div>`;
+  h += "</div>";
+  // sinyal ve akış
+  let flows = [];
+  for (let i = Math.max(1, pts.length - 15); i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], fl = b.total_value - a.total_value * (b.price / a.price), di = b.investor_count - a.investor_count;
+    const avg = a.total_value / a.investor_count, pct = fl / a.total_value * 100;
+    const whale = Math.abs(pct) >= 2 || (Math.abs(pct) >= 0.5 && Math.abs(fl) / Math.max(1, Math.abs(di)) >= 5 * avg);
+    flows.push({d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
+  }
+  const tot = flows.reduce((s, r) => s + r.fl, 0);
+  const ma = k => pts.length >= k ? pts.slice(-k).reduce((s, x) => s + x.price, 0) / k : null, P0 = pts.length ? pts[pts.length - 1].price : null;
+  const r1m = pts.length > 21 ? P0 / pts[pts.length - 22].price - 1 : null;
+  const sg = [["Fiyat 30 g. ortalamanın üstünde", ma(30) != null ? P0 > ma(30) : null], ["Fiyat 90 g. ortalamanın üstünde", ma(90) != null ? P0 > ma(90) : null], ["Fiyat 200 g. ortalamanın üstünde", ma(200) != null ? P0 > ma(200) : null], ["Son 1 ay getirisi pozitif", r1m != null ? r1m > 0 : null], ["Son 15 gün net para girişi", flows.length ? tot > 0 : null]];
+  const sc = sg.reduce((s, x) => s + (x[1] === true ? 1 : x[1] === false ? -1 : 0), 0), lab = sc >= 3 ? "AL eğilimi" : sc <= -3 ? "SAT eğilimi" : "TUT / nötr";
+  h += `<div class="card"><b>Kural tabanlı sinyal: <span class="${sc >= 3 ? "up" : sc <= -3 ? "dn" : ""}">${lab}</span></b> <span class="m">(skor ${sc} / ±5)</span>`;
+  sg.forEach(x => h += `<div style="display:flex;justify-content:space-between"><span>${x[0]}</span><span class="${x[1] ? "up" : x[1] === false ? "dn" : "m"}">${x[1] ? "Evet" : x[1] === false ? "Hayır" : "Veri yok"}</span></div>`);
+  h += '<div class="w">Geçmiş fiyat ve akışa bakan basit bir kuraldır; geleceği öngörmez ve yatırım tavsiyesi değildir.</div></div>';
+  h += `<div class="card"><b>Son 15 gün para akışı ve yatırımcı</b><div class="g">${kv("Toplam net akış (TL)", f2(tot, 0), cl(tot))}${kv("Yatırımcı değişimi", f2(flows.reduce((s, r) => s + r.di, 0), 0))}${kv("Kişi başı ort. (TL)", n0(F.aum / F.investors))}</div><table><tr><th>Tarih</th><th>Fiyat</th><th>Fon büyüklüğü</th><th>Yatırımcı</th><th>Δ</th><th>Tahmini net akış (TL)</th><th>% fon</th><th>Balina?</th></tr>`;
+  flows.slice().reverse().forEach(r => h += `<tr><td>${r.d}</td><td>${r.p.toFixed(4)}</td><td>${n0(r.v)}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td><td class="${cl(r.fl)}">${f2(r.fl, 0)}</td><td>${f2(r.pct)}</td><td>${r.whale ? (r.fl < 0 ? "Balina çıkışı olası" : "Balina girişi olası") : "—"}</td></tr>`);
+  h += '</table><div class="w">Net akış = fon büyüklüğündeki değişim − fiyat etkisi (yaklaşık). “Balina” etiketi; akış fonun %2’sinden büyükse ya da yatırımcı değişimine göre kişi başı tutar ortalamanın 5 katını aşıyorsa konur. Tek tek yatırımcılar görülmez.</div></div>';
+  // varlıklar
+  const comp = {}; (E.components || []).forEach(x => comp[x.ticker] = x);
+  const prev = {}; (H.previousItems || []).forEach(x => prev[x.asset_code || x.asset_name] = x.weight);
+  h += `<div class="card"><b>KAP varlık listesi (${esc(H.latestPeriod || "")})</b><table><tr><th>Varlık</th><th>Tür</th><th>Ağırlık %</th><th>Önceki ay %</th><th>Piyasa değeri (TL)</th><th>Aylık lot değişimi</th><th>Günlük etki (puan)</th></tr>`;
+  (H.items || []).filter(x => x.weight > 0 || x.nominal_lots_delta).forEach(x => {
+    const k = x.asset_code || x.asset_name, cp = comp[k], eff = cp ? cp.contribution * 100 : null;
+    h += `<tr><td>${esc(k)}</td><td>${esc(x.asset_type)}</td><td>${f2(x.weight).replace("+", "")}</td><td>${prev[k] != null ? f2(prev[k]).replace("+", "") : "—"}</td><td>${n0(x.market_value)}</td><td class="${cl(x.nominal_lots_delta)}">${x.nominal_lots_delta ? f2(x.nominal_lots_delta, 0) : "—"}</td><td class="${cl(eff)}">${eff == null ? "—" : f2(eff, 3)}</td></tr>`;
+  });
+  h += '</table><div class="w">Günlük etki yalnızca tahminde fiyatlanan ilk kalemler için gelir. Lot değişimi yöneticinin bir önceki aya göre işlemini gösterir (eksi: azaltma ya da kısa pozisyon olabilir).</div></div>';
+  // kap
+  h += '<div class="card"><b>Son KAP bildirimleri</b><table><tr><th>Konu</th><th>Tarih</th></tr>';
+  ((A.disclosures || {}).items || []).slice(0, 8).forEach(x => h += `<tr><td style="white-space:normal;text-align:left"><a href="https://www.kap.org.tr/tr/Bildirim/${x.disclosure_index}" target="_blank" rel="noopener">${esc(x.subject)}</a></td><td>${dt(x.publish_date)}</td></tr>`);
+  return h + "</table></div>";
+}
+$("go").onclick = run;
+$("code").addEventListener("keydown", e => { if (e.key === "Enter") run(); });
 </script>
 </body>
 </html>
