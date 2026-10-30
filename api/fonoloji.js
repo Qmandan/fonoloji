@@ -2,6 +2,16 @@
 // Ayarlar (Vercel > Settings > Environment Variables):
 //   FONOLOJI_KEY : Fonoloji'den aldığın API anahtarı
 //   APP_CODE     : Kendi seçtiğin erişim kodu (başkaları kotanı harcamasın diye)
+function strip(v) {
+  if (Array.isArray(v)) return v.map(strip);
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k of Object.keys(v)) if (k !== "logoDataUrl") o[k] = strip(v[k]);
+    return o;
+  }
+  return v;
+}
+
 module.exports = async (req, res) => {
   const key = process.env.FONOLOJI_KEY;
   const code = process.env.APP_CODE;
@@ -22,9 +32,11 @@ module.exports = async (req, res) => {
   try {
     const r = await fetch(url, { headers: { "X-API-Key": key } });
     const text = await r.text();
+    let body = text;
+    try { body = JSON.stringify(strip(JSON.parse(text))); } catch (e) {}
     res.setHeader("Content-Type", r.headers.get("content-type") || "application/json");
     res.setHeader("Cache-Control", "private, max-age=120");
-    res.status(r.status).send(text);
+    res.status(r.status).send(body);
   } catch (e) {
     res.status(502).json({ error: "Fonoloji'ye ulaşılamadı: " + e.message });
   }
