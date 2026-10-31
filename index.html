@@ -49,17 +49,53 @@ async function run(quiet) {
   localStorage.setItem("ac", $("ac").value);
   if (!quiet) $("out").innerHTML = '<div class="card m">Yükleniyor…</div>';
   try {
-    const [P, A, T, I] = await Promise.all([
+    const [P, A, T, I, X] = await Promise.all([
       api(`/funds/${c}/portfolio`, "include=allocation,holdings,dates"),
       api(`/funds/${c}/analysis`, "include=estimate,estimate-accuracy,disclosures"),
       api(`/funds/${c}/timeseries`, "include=nav"),
-      api(`/funds/${c}`).catch(() => null)
+      api(`/funds/${c}`).catch(() => null),
+      api(`/funds/${c}/portfolio`, "include=fundamentals,analysts").catch(() => null)
     ]);
-    $("out").innerHTML = `<div class="m">Son yenileme: ${new Date().toLocaleTimeString("tr-TR")} · sayfa açıkken 10 dakikada bir kendiliğinden yenilenir</div>` + render(c, P, A, T, I);
+    $("out").innerHTML = `<div class="m">Son yenileme: ${new Date().toLocaleTimeString("tr-TR")} · sayfa açıkken 10 dakikada bir kendiliğinden yenilenir</div>` + render(c, P, A, T, I, X);
   } catch (e) { if (!quiet) $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
+const SEK = {"Finance": "Finans (bankalar, sigorta)", "Energy Minerals": "Enerji (petrol, doğalgaz, kömür)", "Non-Energy Minerals": "Madencilik ve metal", "Retail Trade": "Perakende (marketler)", "Process Industries": "Kimya ve işlenmiş malzeme", "Technology Services": "Teknoloji hizmetleri", "Transportation": "Ulaştırma", "Consumer Durables": "Dayanıklı tüketim", "Utilities": "Elektrik, su, gaz", "Producer Manufacturing": "Sanayi üretimi", "Communications": "Haberleşme"};
+function valCard(X, lab) {
+  const Fu = X && X.fundamentals, An = X && X.analysts;
+  if (!Fu || !Fu.weighted) return {html: "", text: ""};
+  const w = Fu.weighted, rc = (An && An.recCount) || {}, rated = (rc.AL || 0) + (rc.TUT || 0) + (rc.SAT || 0);
+  const t1 = (v, d) => v == null ? "—" : v.toLocaleString("tr-TR", {maximumFractionDigits: d == null ? 1 : d});
+  const rows = [
+    ["Kâra göre fiyat (F/K)", t1(w.peRatio), w.peRatio == null ? null : w.peRatio <= 15 ? 1 : w.peRatio > 25 ? -1 : 0, "Hisseler, şirketlerin yıllık kârının yaklaşık " + t1(w.peRatio, 0) + " katı fiyattan işlem görüyor. Düşük sayı ucuz, yüksek sayı pahalı demektir."],
+    ["Kayıtlı değere göre fiyat (PD/DD)", t1(w.pbRatio, 2), w.pbRatio == null ? null : w.pbRatio <= 1.5 ? 1 : w.pbRatio > 3 ? -1 : 0, "Şirketler, kayıtlardaki öz değerlerinin yaklaşık " + t1(w.pbRatio, 1) + " katı fiyatlanıyor. 1 civarı, öz değerine yakın demektir."],
+    ["Şirketlerin kârlılığı (%)", t1(w.returnOnEquity), w.returnOnEquity == null ? null : w.returnOnEquity >= 15 ? 1 : w.returnOnEquity < 8 ? -1 : 0, "Şirketler, sahiplerinin parasıyla yılda yaklaşık %" + t1(w.returnOnEquity, 0) + " kâr üretiyor. Yüksek olması iyidir."],
+    ["Şirketlerin borcu (borç / öz değer)", t1(w.debtToEquity, 2), w.debtToEquity == null ? null : w.debtToEquity <= 1.5 ? 1 : w.debtToEquity > 3 ? -1 : 0, "Şirketlerin borcu, öz değerlerinin yaklaşık " + t1(w.debtToEquity, 1) + " katı. Düşük olması daha az borç demektir. Bankalarda bu oran doğası gereği yüksektir."],
+    ["Aracı kurumların görüşü", rated ? (rc.AL || 0) + " AL, " + (rc.TUT || 0) + " TUT, " + (rc.SAT || 0) + " SAT" : "—", rated ? ((rc.AL || 0) / rated >= 0.7 ? 1 : (rc.SAT || 0) / rated >= 0.4 ? -1 : 0) : null, "Fondaki hisseler için aracı kurumların verdiği tavsiyeler. Çoğu kurum genelde AL der; geçmişte tutup tutmadığı bilinmiyor."]
+  ];
+  const v = rows.filter(r => r[2] != null), sc = v.reduce((q, r) => q + r[2], 0), n = v.length;
+  const ver = sc >= 3 ? "Olumlu" : sc <= -3 ? "Olumsuz" : "Karışık";
+  let ov;
+  if (ver === "Olumlu" && lab === "SAT eğilimi") ov = "Göstergeler çelişiyor: hisseler kâra ve öz değere göre ucuz görünüyor, ama fonun fiyatı son günlerde düşüyor. Ucuz görünen bir şey kısa sürede daha da ucuzlayabilir; fiyatın ne zaman döneceği bilinemez.";
+  else if (ver === "Olumlu" && lab === "AL eğilimi") ov = "İki bakış da aynı yönde olumlu: hisseler ucuz görünüyor ve fon son günlerde yükselişte. Bu yine de gelecekte kazandıracağı anlamına gelmez.";
+  else if (ver === "Olumsuz" && lab === "SAT eğilimi") ov = "İki bakış da aynı yönde olumsuz: hisseler pahalı ya da zayıf görünüyor ve fonun fiyatı düşüyor.";
+  else if (ver === "Olumsuz" && lab === "AL eğilimi") ov = "Göstergeler çelişiyor: fon son günlerde yükseliyor ama hisselerin değerlemesi zayıf ya da pahalı görünüyor.";
+  else ov = "Göstergeler tek bir yönü göstermiyor.";
+  let h = `<div class="card"><b>Fonun hisselerinin finansal değerlendirmesi: <span class="${ver === "Olumlu" ? "up" : ver === "Olumsuz" ? "dn" : ""}">${ver}</span></b> <span class="m">(${n} ölçütten ${sc} puan)</span><div class="m">Hisse bölümünün fonun %${t1(Fu.coverage && Fu.coverage.totalWeight)}’i, ${(Fu.coverage && Fu.coverage.stockCount) || "—"} şirket üzerinden</div>`;
+  rows.forEach(r => h += `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${r[0]}</b><span class="${r[2] > 0 ? "up" : r[2] < 0 ? "dn" : "m"}">${r[1]}${r[2] == null ? "" : r[2] > 0 ? " · olumlu" : r[2] < 0 ? " · olumsuz" : " · orta"}</span></div><div class="m">${r[3]}</div></div>`);
+  if ((Fu.topSectors || []).length) h += `<div style="margin-top:8px"><b>En büyük sektörler:</b> ${Fu.topSectors.slice(0, 4).map(x => esc(SEK[x.sector] || x.sector) + " %" + t1(x.weight)).join(" · ")}</div>`;
+  h += `<div class="w">${ov}</div>`;
+  const it = ((An && An.items) || []).filter(x => x.recommendation && x.weight > 0).slice(0, 8);
+  if (it.length) {
+    h += '<table style="margin-top:8px"><tr><th>Hisse</th><th>Fondaki payı %</th><th>Güncel fiyat</th><th>Kurumlara göre yükselme potansiyeli %</th><th>Görüş</th><th>Kaç kurum</th></tr>';
+    it.forEach(x => h += `<tr><td>${esc(x.ticker)} <span class="m">${esc(String(x.name).slice(0, 22))}</span></td><td>${t1(x.weight, 2)}</td><td>${t1(x.closePrice, 2)}</td><td>${t1(x.potentialPct, 0)}</td><td>${esc(x.recommendation)}</td><td>${x.brokerCount}</td></tr>`);
+    h += "</table>";
+  }
+  h += '<div class="w">Bu ölçütler bir hissenin ucuz, kârlı ve az borçlu olup olmadığını anlatır; 3 gün sonraki fiyatı belirlemez. Kurumların hedef fiyatları ve AL önerileri bir görüştür. Enflasyonlu ortamda TL hedefler yüksek görünür ve geçmişte tutmayabilir. Yatırım tavsiyesi değildir.</div></div>';
+  const T = n ? `Fonun hisseleri finansal olarak ${ver === "Olumlu" ? "ucuz ve sağlam" : ver === "Olumsuz" ? "pahalı ya da zayıf" : "karışık"} görünüyor (F/K ${t1(w.peRatio, 1)}${rated ? "; " + rated + " kurumdan " + (rc.AL || 0) + "’i AL diyor" : ""}), ama bu fiyatın yakında yükseleceği anlamına gelmez.` : "";
+  return {html: h, text: T};
+}
 const TUR = {stock: "Hisse", foreign_stock: "Yabancı hisse", cash: "Nakit / mevduat", corporate_bond: "Şirket tahvili", government_bond: "Devlet tahvili", fund: "Başka fon", gold: "Altın"};
-function render(c, P, A, T, I) {
+function render(c, P, A, T, I, X) {
   const F = (P.allocation || {}).fund || {}, H = P.holdings || {}, E = ((A.estimate || {}).estimate) || {}, AC = A["estimate-accuracy"] || {}, pts = ((T.nav || {}).points) || [];
   const pub = H.latestPublishDate, age = pub ? Math.floor((Date.now() - pub) / 864e5) : null;
   const latest = ((P.dates || {}).items || [])[0], fresh = latest && H.latestPeriod ? latest.report_date === H.latestPeriod : null;
@@ -118,17 +154,19 @@ function render(c, P, A, T, I) {
   // kap
   h += '<div class="card"><b>Fonun son resmî duyuruları (KAP)</b><table><tr><th>Konu</th><th>Tarih</th></tr>';
   ((A.disclosures || {}).items || []).slice(0, 8).forEach(x => h += `<tr><td style="white-space:normal;text-align:left"><a href="https://www.kap.org.tr/tr/Bildirim/${x.disclosure_index}" target="_blank" rel="noopener">${esc(x.subject)}</a></td><td>${dt(x.publish_date)}</td></tr>`);
+  const V = valCard(X, lab);
   const ch = flows.length ? (flows.reduce((m, r) => m * (1 + r.ret / 100), 1) - 1) * 100 : null, di = flows.reduce((q, r) => q + r.di, 0);
   const mil = v => (Math.abs(v) / 1e6).toLocaleString("tr-TR", {maximumFractionDigits: 1}), say = [];
   if (ch != null) say.push(`Son 15 işlem gününde fonun fiyatı %${Math.abs(ch).toLocaleString("tr-TR", {maximumFractionDigits: 1})} ${ch < 0 ? "düştü" : "yükseldi"}.`);
   if (flows.length) say.push(`Aynı sürede ${tot < 0 ? "fondan net olarak yaklaşık " + mil(tot) + " milyon TL çıktı" : "fona net olarak yaklaşık " + mil(tot) + " milyon TL girdi"}; ${Math.abs(di)} kişi ${di < 0 ? "fondan ayrıldı" : "fona katıldı"}.`);
   if (E.estimated_change_pct != null) say.push(`Bugün için tahmin: fon yaklaşık %${Math.abs(E.estimated_change_pct).toLocaleString("tr-TR", {maximumFractionDigits: 2})} ${E.estimated_change_pct < 0 ? "değer kaybedebilir" : "değer kazanabilir"}${n ? " (bu tahmin son " + n + " günün " + hit + "’inde yönü doğru bulmuş)" : ""}.`);
   say.push(`Basit kurala göre görünüm: ${lab}. Bu, yarını bilmek anlamına gelmez.`);
+  if (V.text) say.push(V.text);
   if (age != null) say.push(`Fonun içeriği ${age} gün önce yayımlanan rapora dayanıyor.`);
   const plain = `<div class="card"><b>Kısaca</b><div style="margin-top:6px">${say.join(" ")}</div></div>`;
-  const G = [["Fon", "Birçok kişinin parasını bir araya getirip hisse, tahvil, döviz gibi şeylere yatıran ortak havuz. Parayı fonu yöneten şirket değerlendirir."], ["Fon fiyatı", "Fondaki bir parçanın (payın) fiyatı. Fon kazanırsa fiyat yükselir."], ["Varlık", "Fonun parasını yatırdığı şeylerden her biri: hisse, tahvil, nakit gibi."], ["KAP", "Şirketlerin ve fonların resmî duyuru yaptığı kamu sitesi. Fonlar ayda bir ‘portföy raporu’ yayımlar, içinde neye yatırım yaptıkları yazar."], ["Mevduat", "Bankada vadeli hesaba para koyup faiz kazanmak. Fonları kıyaslamak için ölçü olarak kullanılır."], ["Vergi sonrası (net)", "Vergi kesildikten sonra eline geçen kazanç. ‘Vergi öncesi’ ise kesinti yapılmamış hâldir."], ["Yüzde puan", "İki yüzdenin farkı. Örneğin %5 ile %3 arasında 2 puan fark vardır."], ["Fiyat dalgalanması", "Fon fiyatının ne kadar inip çıktığı. Yüksekse hem çok kazanma hem çok kaybetme ihtimali vardır."], ["Risk puanı", "1 en az, 7 en çok riskli demektir."], ["Valör", "Emir verdikten sonra paranın ya da fon payının hesaba geçmesi için geçen iş günü sayısı."], ["Bugün için tahmin", "Fonun içindeki varlıkların bugünkü fiyat değişimlerinden hesaplanan yaklaşık değişimdir. Kesin sonuç değildir."], ["Giren / çıkan para", "Fona yatırılan para ile fondan çekilen paranın farkı. Çok para çıkıyorsa fon küçülüyor demektir."], ["Büyük yatırımcı hareketi", "Tek günde çok büyük bir tutarın girmesi ya da çıkması. Büyük yatırımcıların hareketine işaret edebilir ama kesin değildir."], ["AL / TUT / SAT eğilimi", "Fiyatın son günlerdeki seyrine ve para hareketine bakan basit bir kural. Yatırım tavsiyesi değildir."], ["Ortalama (30 günlük)", "Son 30 günün fiyat ortalaması. Fiyat bunun üstündeyse fon son zamanlarda yükselişte demektir."], ["Serbest fon / nitelikli yatırımcı", "Serbest fonları yalnızca en az 50 milyon TL finansal varlığı olan ‘nitelikli yatırımcılar’ alabilir (SPK, 26 Ekim 2026)."]];
+  const G = [["Fon", "Birçok kişinin parasını bir araya getirip hisse, tahvil, döviz gibi şeylere yatıran ortak havuz. Parayı fonu yöneten şirket değerlendirir."], ["Fon fiyatı", "Fondaki bir parçanın (payın) fiyatı. Fon kazanırsa fiyat yükselir."], ["Varlık", "Fonun parasını yatırdığı şeylerden her biri: hisse, tahvil, nakit gibi."], ["KAP", "Şirketlerin ve fonların resmî duyuru yaptığı kamu sitesi. Fonlar ayda bir ‘portföy raporu’ yayımlar, içinde neye yatırım yaptıkları yazar."], ["Mevduat", "Bankada vadeli hesaba para koyup faiz kazanmak. Fonları kıyaslamak için ölçü olarak kullanılır."], ["Vergi sonrası (net)", "Vergi kesildikten sonra eline geçen kazanç. ‘Vergi öncesi’ ise kesinti yapılmamış hâldir."], ["Yüzde puan", "İki yüzdenin farkı. Örneğin %5 ile %3 arasında 2 puan fark vardır."], ["Fiyat dalgalanması", "Fon fiyatının ne kadar inip çıktığı. Yüksekse hem çok kazanma hem çok kaybetme ihtimali vardır."], ["Risk puanı", "1 en az, 7 en çok riskli demektir."], ["Valör", "Emir verdikten sonra paranın ya da fon payının hesaba geçmesi için geçen iş günü sayısı."], ["Bugün için tahmin", "Fonun içindeki varlıkların bugünkü fiyat değişimlerinden hesaplanan yaklaşık değişimdir. Kesin sonuç değildir."], ["Giren / çıkan para", "Fona yatırılan para ile fondan çekilen paranın farkı. Çok para çıkıyorsa fon küçülüyor demektir."], ["Büyük yatırımcı hareketi", "Tek günde çok büyük bir tutarın girmesi ya da çıkması. Büyük yatırımcıların hareketine işaret edebilir ama kesin değildir."], ["AL / TUT / SAT eğilimi", "Fiyatın son günlerdeki seyrine ve para hareketine bakan basit bir kural. Yatırım tavsiyesi değildir."], ["Ortalama (30 günlük)", "Son 30 günün fiyat ortalaması. Fiyat bunun üstündeyse fon son zamanlarda yükselişte demektir."], ["F/K", "Hisse fiyatının, şirketin bir yıllık kârına oranı. Örneğin 12 demek, hisseyi bugünkü kârıyla yaklaşık 12 yılda geri kazanırsınız demektir. Düşük sayı daha ucuz, yüksek sayı daha pahalı demektir."], ["PD/DD", "Şirketin borsadaki değerinin, kayıtlardaki öz değerine oranı. 1 civarı, şirketin kayıtlı değeri kadar fiyatlandığını gösterir."], ["Kurum hedef fiyatı", "Aracı kurumların bir hisse için tahmin ettiği gelecekteki fiyat. Bu bir görüştür, garanti değildir; enflasyonlu ortamda TL hedefler yüksek görünür."], ["Serbest fon / nitelikli yatırımcı", "Serbest fonları yalnızca en az 50 milyon TL finansal varlığı olan ‘nitelikli yatırımcılar’ alabilir (SPK, 26 Ekim 2026)."]];
   const gl = `<details class="card"><summary><b>Terimler sözlüğü (anlamadığınız bir kelime mi var?)</b></summary>${G.map(g => `<div style="margin-top:8px"><b>${g[0]}:</b> ${g[1]}</div>`).join("")}</details>`;
-  return plain + h + "</table></div>" + gl;
+  return plain + V.html + h + "</table></div>" + gl;
 }
 const MA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 function monthList(d) {
