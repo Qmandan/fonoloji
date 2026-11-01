@@ -4,28 +4,85 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fon Analiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{color-scheme:light dark;--bg:#f5f6f8;--c:#fff;--t:#14181f;--m:#667085;--b:#e2e5ea;--up:#0a8f4e;--dn:#d1332b;--ac:#2557d6;--wn:#a85f00;--wb:#fff4e0}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--c:#171b22;--t:#e9ecf1;--m:#98a2b3;--b:#2a303a;--up:#3ddc84;--dn:#ff6b62;--ac:#7aa2ff;--wn:#ffc266;--wb:#2b2312}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font:15px/1.5 system-ui,sans-serif}
-main{max-width:900px;margin:0 auto;padding:16px}h1{font-size:20px;margin:4px 0}
-.card{background:var(--c);border:1px solid var(--b);border-radius:14px;padding:14px;margin:12px 0;overflow-x:auto}
-.row{display:flex;gap:8px;flex-wrap:wrap}input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--b);background:var(--bg);color:var(--t)}
-button{background:var(--ac);color:#fff;border:0;font-weight:600}.m{color:var(--m);font-size:13px}.big{font-size:34px;font-weight:700;line-height:1.1}
-.up{color:var(--up)}.dn{color:var(--dn)}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0}
-.k{font-size:12px;color:var(--m)}.v{font-weight:600}.w{background:var(--wb);color:var(--wn);border-radius:10px;padding:9px 12px;margin:8px 0;font-size:13px}
-table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--b);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
+:root{color-scheme:light dark;--bg:#eef1f5;--sf:#fff;--ink:#17202e;--mut:#5b6676;--line:#dde3ec;--tint:#f5f7fb;--ac:#2b4acb;--act:#e8edff;--up:#0b7f4b;--dn:#c62f2f;--wb:#fff3dc;--wi:#7a4b00;--r:14px}
+@media(prefers-color-scheme:dark){:root{--bg:#0e131a;--sf:#161d27;--ink:#e8edf4;--mut:#9aa6b6;--line:#283241;--tint:#1b2431;--ac:#8aa4ff;--act:#202b4a;--up:#46d68c;--dn:#ff7b72;--wb:#2d2412;--wi:#ffc266}}
+*{box-sizing:border-box}
+html{scroll-padding-top:96px}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.6 Figtree,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+.bar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--sf) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.bar-in{max-width:980px;margin:0 auto;padding:12px 20px;display:grid;grid-template-columns:1fr auto;gap:6px 20px;align-items:center}
+.brand h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.brand p{margin:2px 0 0;font-size:14px;color:var(--mut);line-height:1.4;max-width:46ch}
+.search{display:flex;gap:8px}
+.acc{font-size:15px;color:var(--mut);margin:0 0 4px}
+.acc summary{cursor:pointer;width:max-content}
+.acc input{margin-top:8px;width:min(100%,300px)}
+main{max-width:980px;margin:0 auto;padding:24px 20px 72px}
+input,button{font:inherit;min-height:46px;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--sf);color:var(--ink)}
+input:focus-visible,button:focus-visible,summary:focus-visible,a:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+#code{width:190px;font-weight:600;text-transform:uppercase}
+button{background:var(--ac);color:#fff;border-color:transparent;font-weight:600;cursor:pointer;transition:filter .15s}
+@media(prefers-color-scheme:dark){button{color:#0e131a}}
+button{white-space:nowrap;flex:none}button:hover{filter:brightness(1.08)}button:disabled{opacity:.5}
+.card{background:var(--sf);border:1px solid var(--line);border-radius:var(--r);padding:24px 26px;margin:20px 0;overflow-x:auto}
+.card>b{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:19px;font-weight:700;line-height:1.35;letter-spacing:-.005em}
+.card>b span.up,.card>b span.dn{font-size:14px;font-weight:600;padding:3px 12px;border-radius:99px;background:color-mix(in srgb,currentColor 14%,transparent)}
+.card>b+*{margin-top:12px}
+.hero{background:var(--act);border-color:transparent;border-left:5px solid var(--ac)}
+.hero .lead{font-size:19px;line-height:1.7;max-width:62ch}.lead p{margin:0 0 12px}.lead p:last-child{margin:0}
+.row{display:flex;gap:12px 14px;flex-wrap:wrap;align-items:center}
+.row label{font-size:14px;color:var(--mut)}
+.row input{max-width:120px}
+.m{color:var(--mut);font-size:14px;line-height:1.55}
+.k{font-size:14px;color:var(--mut);line-height:1.4}
+.v{font-weight:600;font-size:18px;line-height:1.35}
+.big{font-size:44px;font-weight:700;line-height:1.1;letter-spacing:-.02em;margin:4px 0}
+.up{color:var(--up)}.dn{color:var(--dn)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0 4px}
+.g>div{background:var(--tint);border-radius:12px;padding:14px 16px}
+.w{background:var(--wb);color:var(--wi);border-radius:12px;padding:14px 16px;margin:16px 0 0;font-size:15px;line-height:1.6;max-width:78ch}
+details>summary{cursor:pointer;font-weight:600;list-style-position:inside}
+details.card>summary{font-size:19px;font-weight:700;padding:2px 0}
+details.card[open]>summary{margin-bottom:14px}
+details.tbl{margin-top:14px}
+details.tbl>summary{color:var(--ac);font-size:15px;padding:8px 0}
+details.tbl>table{margin-top:8px}
+a{color:var(--ac)}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:15px}
+th{font-weight:600;color:var(--mut);font-size:13px;line-height:1.35;background:var(--tint);vertical-align:bottom}
+th,td{padding:11px 11px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th:first-child{border-top-left-radius:10px}th:last-child{border-top-right-radius:10px}
+tr:last-child td{border-bottom:0}
+@media(max-width:720px){
+  .bar-in{grid-template-columns:1fr;padding:10px 16px}.brand p{display:none}.search{width:100%}#code{flex:1;width:auto}
+  main{padding:16px 14px 64px}.card{padding:20px 18px;margin:16px 0}.big{font-size:38px}.hero .lead{font-size:18px}
+  .g{grid-template-columns:1fr 1fr}.g>div{padding:12px}
+  table,tbody,tr,td{display:block;width:100%}tr:first-child{display:none}
+  tr{border:1px solid var(--line);border-radius:12px;padding:6px 14px;margin:10px 0}
+  td{display:flex;justify-content:space-between;gap:16px;text-align:right;border:0;padding:7px 0;white-space:normal}
+  td::before{content:attr(data-label);color:var(--mut);font-size:14px;text-align:left;flex:0 0 46%}
+  td:first-child{font-weight:600;border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:9px}
+  td:first-child::before{display:none}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<header class="bar"><div class="bar-in">
+<div class="brand"><h1>Fon Analiz</h1><p>Bir fonun neye yatırım yaptığını, ne kadar kazandırdığını ve parasının nasıl hareket ettiğini sade dille gösterir.</p></div>
+<div class="search"><input id="code" value="ECA" placeholder="Fon kodu, örn. ECA" aria-label="Fon kodu" autocomplete="off"><button id="go">Analiz et</button></div>
+</div></header>
 <main>
-<h1>Fon Analiz</h1>
-<div class="m">Fonun neye yatırım yaptığını, bugün ne kadar kazanıp kaybedebileceğini ve içine/dışına ne kadar para girdiğini gösterir. Veri kaynağı: Fonoloji</div>
-<div class="card"><div class="row"><input id="ac" type="password" placeholder="Erişim kodu"><input id="code" placeholder="Fon kodu" value="ECA" style="width:120px;text-transform:uppercase"><button id="go">Analiz et</button></div></div>
-<div class="card"><b>Fon bulucu: son 3 ayın her ayında banka mevduatından fazla kazandıran fonlar</b>
+<details class="acc"><summary>Erişim kodu (ilk kullanımda bir kez girin)</summary><input id="ac" type="password" placeholder="Erişim kodunuz" aria-label="Erişim kodu"></details>
+<details class="card" id="finder"><summary>Fon bulucu: son 3 ayın her ayında banka mevduatından fazla kazandıran fonlar</summary>
 <div class="row" style="margin-top:8px"><label class="m" for="mev">Banka mevduatı 3 ayda kaç % (vergi öncesi)</label><input id="mev" type="number" step="0.01" value="11.85" style="width:90px"><label class="m" for="tf">Fon kazancından kesilen vergi %</label><input id="tf" type="number" step="0.5" value="17.5" style="width:70px"><label class="m" for="td">Mevduat faizinden kesilen vergi %</label><input id="td" type="number" step="0.5" value="17.5" style="width:70px"><button id="scanbtn">Fonları bul</button></div>
 <div class="m" style="margin-top:6px">Banka mevduatı oranını Fonoloji’nin 30 Ekim 2026 tarihli verisinden aldım (3 ayda %11,85); değiştiyse kendiniz yazın. Her ay için eşit bir aylık oran varsayıyorum. Serbest fonlar listede yok, çünkü onları yalnızca en az 50 milyon TL finansal varlığı olan “nitelikli yatırımcılar” alabilir (SPK, 26 Ekim 2026). Sayfa açıkken liste saatte bir yenilenir (en fazla 6 kez). Her arama yaklaşık 60-84 “fon kaydı” harcar, aylık hakkınız 15.000</div>
-<div id="scan" style="margin-top:8px"></div></div>
+<div id="scan" style="margin-top:14px"></div></details>
 <div id="out"></div>
 <div class="m" style="margin:16px 0">Bu sayfa bilgi verir, yatırım tavsiyesi vermez. Tahminler kesin değildir. Fonun içeriği ayda bir yayımlanan rapora dayanır, ay içinde değişmiş olabilir.</div>
 </main>
@@ -38,6 +95,7 @@ const cl = n => n > 0 ? "up" : n < 0 ? "dn" : "";
 const kv = (k, v, c) => `<div><div class="k">${k}</div><div class="v ${c || ""}">${v}</div></div>`;
 const dt = ms => new Date(ms).toLocaleDateString("tr-TR", {day: "numeric", month: "short", year: "numeric"});
 $("ac").value = localStorage.getItem("ac") || "";
+if (!$("ac").value) document.querySelector(".acc").open = true;
 async function api(path, qs) {
   const r = await fetch("/api/fonoloji?path=" + encodeURIComponent(path) + (qs ? "&" + qs : ""), {headers: {"x-app-code": $("ac").value}});
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch (e) { j = null; }
@@ -57,6 +115,7 @@ async function run(quiet) {
       api(`/funds/${c}/portfolio`, "include=fundamentals,analysts").catch(() => null)
     ]);
     $("out").innerHTML = `<div class="m">Son yenileme: ${new Date().toLocaleTimeString("tr-TR")} · sayfa açıkken 10 dakikada bir kendiliğinden yenilenir</div>` + render(c, P, A, T, I, X);
+    polish($("out"));
   } catch (e) { if (!quiet) $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
 const SEK = {"Finance": "Finans (bankalar, sigorta)", "Energy Minerals": "Enerji (petrol, doğalgaz, kömür)", "Non-Energy Minerals": "Madencilik ve metal", "Retail Trade": "Perakende (marketler)", "Process Industries": "Kimya ve işlenmiş malzeme", "Technology Services": "Teknoloji hizmetleri", "Transportation": "Ulaştırma", "Consumer Durables": "Dayanıklı tüketim", "Utilities": "Elektrik, su, gaz", "Producer Manufacturing": "Sanayi üretimi", "Communications": "Haberleşme"};
@@ -93,6 +152,18 @@ function valCard(X, lab) {
   h += '<div class="w">Bu ölçütler bir hissenin ucuz, kârlı ve az borçlu olup olmadığını anlatır; 3 gün sonraki fiyatı belirlemez. Kurumların hedef fiyatları ve AL önerileri bir görüştür. Enflasyonlu ortamda TL hedefler yüksek görünür ve geçmişte tutmayabilir. Yatırım tavsiyesi değildir.</div></div>';
   const T = n ? `Fonun hisseleri finansal olarak ${ver === "Olumlu" ? "ucuz ve sağlam" : ver === "Olumsuz" ? "pahalı ya da zayıf" : "karışık"} görünüyor (F/K ${t1(w.peRatio, 1)}${rated ? "; " + rated + " kurumdan " + (rc.AL || 0) + "’i AL diyor" : ""}), ama bu fiyatın yakında yükseleceği anlamına gelmez.` : "";
   return {html: h, text: T};
+}
+function polish(root, open) {
+  root.querySelectorAll("table").forEach(t => {
+    const hs = [...t.querySelectorAll("tr:first-child th")].map(x => x.textContent.trim());
+    t.querySelectorAll("tr").forEach(r => [...r.children].forEach((c, i) => { if (c.tagName === "TD") c.dataset.label = hs[i] || ""; }));
+    const n = t.querySelectorAll("tr").length - 1;
+    if (!open && n > 6 && !t.closest("details")) {
+      const d = document.createElement("details"); d.className = "tbl";
+      d.innerHTML = `<summary>Ayrıntılı tabloyu göster (${n} satır)</summary>`;
+      t.replaceWith(d); d.appendChild(t);
+    }
+  });
 }
 const TUR = {stock: "Hisse", foreign_stock: "Yabancı hisse", cash: "Nakit / mevduat", corporate_bond: "Şirket tahvili", government_bond: "Devlet tahvili", fund: "Başka fon", gold: "Altın"};
 function render(c, P, A, T, I, X) {
@@ -163,7 +234,7 @@ function render(c, P, A, T, I, X) {
   say.push(`Basit kurala göre görünüm: ${lab}. Bu, yarını bilmek anlamına gelmez.`);
   if (V.text) say.push(V.text);
   if (age != null) say.push(`Fonun içeriği ${age} gün önce yayımlanan rapora dayanıyor.`);
-  const plain = `<div class="card"><b>Kısaca</b><div style="margin-top:6px">${say.join(" ")}</div></div>`;
+  const plain = `<div class="card hero"><b>Kısaca</b><div class="lead">${say.map(x => "<p>" + x + "</p>").join("")}</div></div>`;
   const G = [["Fon", "Birçok kişinin parasını bir araya getirip hisse, tahvil, döviz gibi şeylere yatıran ortak havuz. Parayı fonu yöneten şirket değerlendirir."], ["Fon fiyatı", "Fondaki bir parçanın (payın) fiyatı. Fon kazanırsa fiyat yükselir."], ["Varlık", "Fonun parasını yatırdığı şeylerden her biri: hisse, tahvil, nakit gibi."], ["KAP", "Şirketlerin ve fonların resmî duyuru yaptığı kamu sitesi. Fonlar ayda bir ‘portföy raporu’ yayımlar, içinde neye yatırım yaptıkları yazar."], ["Mevduat", "Bankada vadeli hesaba para koyup faiz kazanmak. Fonları kıyaslamak için ölçü olarak kullanılır."], ["Vergi sonrası (net)", "Vergi kesildikten sonra eline geçen kazanç. ‘Vergi öncesi’ ise kesinti yapılmamış hâldir."], ["Yüzde puan", "İki yüzdenin farkı. Örneğin %5 ile %3 arasında 2 puan fark vardır."], ["Fiyat dalgalanması", "Fon fiyatının ne kadar inip çıktığı. Yüksekse hem çok kazanma hem çok kaybetme ihtimali vardır."], ["Risk puanı", "1 en az, 7 en çok riskli demektir."], ["Valör", "Emir verdikten sonra paranın ya da fon payının hesaba geçmesi için geçen iş günü sayısı."], ["Bugün için tahmin", "Fonun içindeki varlıkların bugünkü fiyat değişimlerinden hesaplanan yaklaşık değişimdir. Kesin sonuç değildir."], ["Giren / çıkan para", "Fona yatırılan para ile fondan çekilen paranın farkı. Çok para çıkıyorsa fon küçülüyor demektir."], ["Büyük yatırımcı hareketi", "Tek günde çok büyük bir tutarın girmesi ya da çıkması. Büyük yatırımcıların hareketine işaret edebilir ama kesin değildir."], ["AL / TUT / SAT eğilimi", "Fiyatın son günlerdeki seyrine ve para hareketine bakan basit bir kural. Yatırım tavsiyesi değildir."], ["Ortalama (30 günlük)", "Son 30 günün fiyat ortalaması. Fiyat bunun üstündeyse fon son zamanlarda yükselişte demektir."], ["F/K", "Hisse fiyatının, şirketin bir yıllık kârına oranı. Örneğin 12 demek, hisseyi bugünkü kârıyla yaklaşık 12 yılda geri kazanırsınız demektir. Düşük sayı daha ucuz, yüksek sayı daha pahalı demektir."], ["PD/DD", "Şirketin borsadaki değerinin, kayıtlardaki öz değerine oranı. 1 civarı, şirketin kayıtlı değeri kadar fiyatlandığını gösterir."], ["Kurum hedef fiyatı", "Aracı kurumların bir hisse için tahmin ettiği gelecekteki fiyat. Bu bir görüştür, garanti değildir; enflasyonlu ortamda TL hedefler yüksek görünür."], ["Serbest fon / nitelikli yatırımcı", "Serbest fonları yalnızca en az 50 milyon TL finansal varlığı olan ‘nitelikli yatırımcılar’ alabilir (SPK, 26 Ekim 2026)."]];
   const gl = `<details class="card"><summary><b>Terimler sözlüğü (anlamadığınız bir kelime mi var?)</b></summary>${G.map(g => `<div style="margin-top:8px"><b>${g[0]}:</b> ${g[1]}</div>`).join("")}</details>`;
   return plain + V.html + h + "</table></div>" + gl;
@@ -215,7 +286,7 @@ async function scan(quiet) {
       h += "</table>";
     }
     h += '<div class="w">Bu liste bir arama sonucudur, yatırım tavsiyesi değildir. Son 3 ayda en çok kazandıran fonlardan başlıyorum; yükselişin bittiği dönemlerde bu fonlar hızla geri verebilir. Geçmişte mevduatı geçmek, ileride de geçeceği anlamına gelmez. Sıralama, fonun mevduattan en az fazla kazandırdığı aya göredir. “Riske göre verimlilik” yüksekse fon, aldığı riske göre daha çok kazandırmış demektir. “Fonoloji: mevduatı geçti mi?” sütununun hangi döneme ait olduğunu bilmiyorum.</div>';
-    el.innerHTML = h; scanned = true;
+    el.innerHTML = h; scanned = true; polish(el, true);
     el.querySelectorAll("a[data-c]").forEach(a => a.onclick = e => { e.preventDefault(); $("code").value = a.dataset.c; run(); window.scrollTo(0, 0); });
   } catch (e) { if (!quiet) el.innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
