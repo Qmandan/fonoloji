@@ -77,6 +77,13 @@ tr:last-child td{border-bottom:0}
 .okg{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px 18px;margin-top:8px;color:var(--up);font-size:15px}
 .chart{width:100%;height:190px;display:block;color:var(--ac);margin:10px 0 4px}.cx{display:flex;justify-content:space-between;font-size:13px;color:var(--mut)}
 .mch{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}.mchip{font-size:14px;padding:4px 12px;border-radius:99px;background:color-mix(in srgb,currentColor 13%,transparent);font-weight:600}
+details>summary{list-style:none}details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸";display:inline-block;width:1.2em;color:var(--ac);transition:transform .15s}details[open]>summary::before{transform:rotate(90deg)}
+#bt .v{font-size:16px;font-weight:600;line-height:1.5}
+@media(max-width:720px){#bt .g{grid-template-columns:1fr}}
+.lnk{white-space:normal;text-align:left;line-height:1.4;max-width:100%;margin-top:16px;background:transparent;color:var(--ac);border:1.5px solid var(--ac);min-height:44px;padding:8px 16px;font-weight:600}
+.lnk:hover{background:var(--act);filter:none}
+@media(prefers-color-scheme:dark){.lnk{color:var(--ac)}}
 @media(max-width:720px){.st5{grid-template-columns:1fr}}
 @media(max-width:720px){.al{grid-template-columns:1fr}.al i{width:max-content;padding:3px 14px}}
 @media(max-width:720px){
@@ -191,6 +198,7 @@ function alertsCard(c) {
   if (oks.length) h += `<div class="oks"><b>Sorun görünmeyenler</b><div class="okg">${oks.map(t => "<span>✓ " + t + "</span>").join("")}</div></div>`;
   if (!out.length) h += '<div class="m">Ölçebildiğim ölçütlerde bir sorun görünmüyor. Bu, risk olmadığı anlamına gelmez: varlıkların fiyatı düşürmeden satılabilirliğini (likidite) ve fiyat şişirmeyi ölçemiyorum.</div>';
   h += '<div class="w">Bu uyarılar basit eşiklere dayanır; bir sorunun varlığını kanıtlamaz, yokluğunu da garanti etmez. Fonu satıp satmamak sizin kararınızdır. Aracı kurumunuzdan fonun iade (paraya çevirme) esaslarını, emir saatlerini ve paranın kaç iş günde hesaba geçeceğini öğrenin; fon işleme kapatılırsa satış yapılamayabilir. Yatırım tavsiyesi değildir.</div>';
+  h += '<button type="button" class="lnk" onclick="openBT()">Bu uyarılar geçmişte işe yaradı mı? Geri testi göster</button>';
   h += '<details><summary>SPK’nın son düzenlemeleri (özet)</summary><div><b>26 Ekim 2026:</b> Nitelikli yatırımcı için finansal varlık şartı 50 milyon TL oldu; serbest fonlar yalnızca nitelikli yatırımcılara satılabilir.</div><div><b>17 Eylül 2026:</b> Tera dahil 7 portföy şirketinin fonları TEFAS’ta işleme kapatıldı ve tasfiyesine karar verildi. Ödeme tarihi ve tutarı bu kararla belirlenmedi.</div><div><b>28 Ağustos 2026 (Yatırım Fonları Rehberi):</b> Serbest fonlara yoğunlaşma sınırı: %5’i aşan pozisyonların toplamı en çok %20; tek hisse için sınır hissenin halka açık oranına göre. Repo ve ters repo işlemleri Takasbank güvencesine bağlandı, serbest fonlarda %20 ile sınırlı. Para piyasası fonlarında en az %10 devlet tahvili şartı. Bir fonda %30 ve üzeri pay sahipliği KAP’ta ilan edilecek. Aşımlar 31 Ekim’e kadar 1/3, 30 Kasım’a kadar 2/3, 31 Aralık’ta tamamen kapatılacak; yani bazı fonlar şu anda zorunlu satış yapıyor olabilir. Fonun yatırımcıdan geri alımı (satış) durdurulamaz.</div><div>Bu bir özettir; kesin hükümler için SPK metnine ve fonun izahnamesine bakın.</div></details></div>';
   return {stale, lastD, html: h, text: out.length ? `Erken uyarı: ${ttl} uyarı var; ayrıntısı en üstteki kutuda.` : "Erken uyarı: ölçebildiğim ölçütlerde belirgin bir uyarı yok.", red, yel};
 }
@@ -253,7 +261,7 @@ function chartCard(pts) {
     + `<div class="w">“Tepeden dibe düşüş”, fonun gördüğü en yüksek fiyattan sonraki en düşük fiyata kadar kaybettiği orandır. Fonu en kötü zamanda tutsaydınız yaşayacağınız kaybı gösterir. Geçmiş, geleceğin aynısı olmayabilir.</div></div>`;
 }
 function backtestCard(pts) {
-  const N = pts.length; if (N < 100) return "";
+  const N = pts.length; if (N < 100) return `<div class="card" id="bt"><b>Geri test yapılamadı</b><div class="m">Bu fonun fiyat geçmişi yalnızca ${N} işlem günü. Uyarıların geçmişte işe yarayıp yaramadığını görmek için en az 100 işlem günü gerekir.</div></div>`;
   const L = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, rows = [];
   const names = ["Para çıkışı (15 günde)", "Kişi kaybı (15 günde)", "Tek günde büyük çıkış", "Çok hızlı büyüme (60 günde)", "Olağanüstü aylık getiri"];
   for (let i = 75; i < N; i++) {
@@ -267,9 +275,10 @@ function backtestCard(pts) {
   let ex = "";
   if (stale > 6) ex = `<div class="w">Bu fonun fiyatı ${lastD} tarihinde durmuş. Ölçülebilen kuralların ilk sarı uyarısı ${fy ? fy.d : "hiç çıkmadı"}, ilk kırmızı uyarısı ${fr ? fr.d + " (fiyatın durmasından " + Math.round((new Date(lastD) - new Date(fr.d)) / 864e5) + " gün önce)" : "hiç çıkmadı"}.</div>`;
   const rs = names.map((n, k) => `<div><div class="k">${n} kuralı çalışan günler</div><div class="v">${st(r => r.sevs[k] >= 1)}</div></div>`).join("");
-  return `<details class="card"><summary>Bu uyarılar bu fonun geçmişinde işe yaradı mı? (geri test)</summary><div class="g">${rs}<div><div class="k">Hiçbir kuralın çalışmadığı günler</div><div class="v">${st(r => r.sev === 0)}</div></div></div>${ex}`
+  return `<details class="card" id="bt"><summary>Bu uyarılar bu fonun geçmişinde işe yaradı mı? (geri test)</summary><div class="g">${rs}<div><div class="k">Hiçbir kuralın çalışmadığı günler</div><div class="v">${st(r => r.sev === 0)}</div></div></div>${ex}`
     + `<div class="w">Nasıl okunur: Bir kuralın çalıştığı günlerden 20 iş günü sonra fiyat, kuralın çalışmadığı günlere göre belirgin biçimde daha kötüyse o kural işe yarıyor demektir. Fark yoksa ya da tersiyse kural bu fonda bir şey eklemiyor. Yeni kurulmuş ve hızla büyüyen fonlarda “çok hızlı büyüme” kuralı sürekli çalışır, yanlış alarm verir. Geri test yalnızca bu beş kuralı kapsar; KAP duyurusu, işlem kapalılığı ve yoğunlaşma kurallarının geçmişi bu seride yok. Tek bir fonun geçmişidir ve genelleştirilemez. Kriz yaşamış fonlarda (örneğin THF, TLY) denemek için o fonu arayın.</div></details>`;
 }
+function openBT() { const d = document.getElementById("bt"); if (d) { if (d.tagName === "DETAILS") d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
 let RA = null;
 function wireAmt() {
   const am = document.getElementById("amt");
