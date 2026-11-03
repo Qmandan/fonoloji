@@ -146,7 +146,7 @@ async function run(quiet) {
     RA = [c, P, A, T, I, X]; polish($("out")); wireAmt();
   } catch (e) { if (!quiet) $("out").innerHTML = `<div class="w">${esc(e.message)}</div>`; }
 }
-const ESIK = {cikis15: [10, 20], gun: [5, 10], kisi: [10, 20], buyume: [3, 10], getiri: [30, 50], tek: [20, 30], ilk3: [50, 70], brut: [110, 125], grup: [10, 20], cokus: 7};
+const ESIK = {cikis15: [10, 20], gun: [5, 10], kisi: [10, 20], buyume: [3, 10], getiri: [30, 50], mevKat: [3, 5], tek: [20, 30], ilk3: [50, 70], brut: [110, 125], grup: [10, 20], cokus: 7};
 function alertsCard(c) {
   const out = [], push = (sev, t, d) => out.push({sev, t, d}), {pts, flows, tot, F, H, A, I, age} = c, N = pts.length, items = H.items || [];
   const lvl = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, f1 = v => v.toLocaleString("tr-TR", {maximumFractionDigits: 1}), nm = x => esc(x.asset_code || x.asset_name);
@@ -172,6 +172,8 @@ function alertsCard(c) {
   if (N > 61) {
     const g = pts[N - 1].total_value / pts[N - 61].total_value, mr = Math.abs(pts[N - 1].price / pts[N - 22].price - 1) * 100;
     let l = lvl(g, ESIK.buyume); if (l) push(l, "Fon çok hızlı büyüyor", `Fonun parası 60 günde ${f1(g)} katına çıktı. Haberlere göre THF de krizden önce bir ayda katlanarak büyümüştü. Çok hızlı büyüyen fonlar, küçük ve az işlem gören hisselerin fiyatını yukarı itebilir.`);
+    const mevAy = (Math.pow(1 + (parseFloat($("mev").value) || 11.85) / 100, 1 / 3) - 1) * 100, r21 = (pts[N - 1].price / pts[N - 22].price - 1) * 100;
+    l = lvl(r21 / mevAy, ESIK.mevKat); if (l && r21 >= 10) push(l, "Mevduatın çok üstünde getiri", `Son 21 işlem gününde fon %${f1(r21)} kazandırdı; aynı sürede mevduat yaklaşık %${f1(mevAy)}. Mevduatın birkaç katı süren getiri sürdürülebilir olmayabilir ve varlık fiyatlarının şişirilmiş olabileceğine işaret edebilir. Krize giren bazı fonların fiyatı da böyle sert yükseliyordu.`);
     l = lvl(mr, ESIK.getiri); if (l) push(l, "Olağanüstü aylık getiri", `Fon fiyatı son ay içinde %${f1(mr)} değişti. Bu kadar sert hareket sürdürülebilir olmayabilir.`); if (lvl(g, ESIK.buyume) === 0) oks.push("Fon aşırı hızlı büyümüyor"); if (lvl(mr, ESIK.getiri) === 0) oks.push("Aylık fiyat hareketi olağan");
   }
   const real = items.filter(x => x.asset_type !== "cash" && x.weight > 0).sort((a, b) => b.weight - a.weight);
@@ -262,21 +264,23 @@ function chartCard(pts) {
 }
 function backtestCard(pts) {
   const N = pts.length; if (N < 100) return `<div class="card" id="bt"><b>Geri test yapılamadı</b><div class="m">Bu fonun fiyat geçmişi yalnızca ${N} işlem günü. Uyarıların geçmişte işe yarayıp yaramadığını görmek için en az 100 işlem günü gerekir.</div></div>`;
-  const L = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, rows = [];
-  const names = ["Para çıkışı (15 günde)", "Kişi kaybı (15 günde)", "Tek günde büyük çıkış", "Çok hızlı büyüme (60 günde)", "Olağanüstü aylık getiri"];
+  const L = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, rows = [], mevAy = (Math.pow(1 + (parseFloat($("mev").value) || 11.85) / 100, 1 / 3) - 1) * 100;
+  const names = ["Para çıkışı (15 günde)", "Kişi kaybı (15 günde)", "Tek günde büyük çıkış", "Çok hızlı büyüme (60 günde)", "Olağanüstü aylık getiri", "Mevduatın çok üstünde getiri"];
   for (let i = 75; i < N; i++) {
-    const a = pts[i - 15], b = pts[i]; let fl = 0, worst = 0;
+    const a = pts[i - 15], b = pts[i], r21 = (b.price / pts[i - 21].price - 1) * 100; let fl = 0, worst = 0;
     for (let j = i - 14; j <= i; j++) { const f = pts[j].total_value - pts[j - 1].total_value * pts[j].price / pts[j - 1].price; fl += f; worst = Math.min(worst, f / pts[j - 1].total_value * 100); }
-    const sevs = [L(-fl / a.total_value * 100, ESIK.cikis15), L((a.investor_count - b.investor_count) / a.investor_count * 100, ESIK.kisi), L(-worst, ESIK.gun), L(b.total_value / pts[i - 60].total_value, ESIK.buyume), L(Math.abs(b.price / pts[i - 21].price - 1) * 100, ESIK.getiri)];
+    const sevs = [L(-fl / a.total_value * 100, ESIK.cikis15), L((a.investor_count - b.investor_count) / a.investor_count * 100, ESIK.kisi), L(-worst, ESIK.gun), L(b.total_value / pts[i - 60].total_value, ESIK.buyume), L(Math.abs(r21), ESIK.getiri), r21 >= 10 ? L(r21 / mevAy, ESIK.mevKat) : 0];
     rows.push({d: b.date, sevs, sev: Math.max(...sevs), fwd: i + 20 < N ? (pts[i + 20].price / b.price - 1) * 100 : null});
   }
-  const st = f => { const a = rows.filter(f), v = a.filter(r => r.fwd != null).map(r => r.fwd); return `${a.length} gün` + (v.length ? ` · 20 iş günü sonra ortalama %${f2(v.reduce((q, x) => q + x, 0) / v.length, 1)} · %${Math.round(v.filter(x => x < 0).length / v.length * 100)}’inde düşüş` : ""); };
-  const fy = rows.find(r => r.sev >= 1), fr = rows.find(r => r.sev === 2), lastD = pts[N - 1].date, stale = Math.floor((Date.now() - new Date(lastD).getTime()) / 864e5);
+  const lastD = pts[N - 1].date, stale = Math.floor((Date.now() - new Date(lastD).getTime()) / 864e5), gun = d => Math.round((new Date(lastD) - new Date(d)) / 864e5);
+  const st = f => { const a = rows.filter(f), v = a.filter(r => r.fwd != null).map(r => r.fwd), bos = a.length - v.length;
+    return `${a.length} gün` + (v.length ? ` · 20 iş günü sonra ortalama %${f2(v.reduce((q, x) => q + x, 0) / v.length, 1)} · %${Math.round(v.filter(x => x < 0).length / v.length * 100)}’inde düşüş` : "") + (bos ? ` · ${bos} günün sonrası bilinmiyor` : "") + (a.length ? `<br><span class="m">ilk çalıştığı gün: ${a[0].d}${stale > 6 ? " (fiyatın durmasından " + gun(a[0].d) + " gün önce)" : ""}</span>` : ""); };
+  const fy = rows.find(r => r.sev >= 1), fr = rows.find(r => r.sev === 2);
   let ex = "";
-  if (stale > 6) ex = `<div class="w">Bu fonun fiyatı ${lastD} tarihinde durmuş. Ölçülebilen kuralların ilk sarı uyarısı ${fy ? fy.d : "hiç çıkmadı"}, ilk kırmızı uyarısı ${fr ? fr.d + " (fiyatın durmasından " + Math.round((new Date(lastD) - new Date(fr.d)) / 864e5) + " gün önce)" : "hiç çıkmadı"}.</div>`;
+  if (stale > 6) ex = `<div class="w">Bu fonun fiyatı ${lastD} tarihinde durmuş. Ölçülebilen kuralların ilk sarı uyarısı ${fy ? fy.d + " (fiyatın durmasından " + gun(fy.d) + " gün önce)" : "hiç çıkmadı"}, ilk kırmızı uyarısı ${fr ? fr.d + " (" + gun(fr.d) + " gün önce)" : "hiç çıkmadı"}. Fiyatı dondurulan bir fonda risk fiyat düşüşü değil, paranın çıkamamasıdır; bu yüzden fiyat odaklı sonuçlar tek başına yanıltıcı olabilir.</div>`;
   const rs = names.map((n, k) => `<div><div class="k">${n} kuralı çalışan günler</div><div class="v">${st(r => r.sevs[k] >= 1)}</div></div>`).join("");
-  return `<details class="card" id="bt"><summary>Bu uyarılar bu fonun geçmişinde işe yaradı mı? (geri test)</summary><div class="g">${rs}<div><div class="k">Hiçbir kuralın çalışmadığı günler</div><div class="v">${st(r => r.sev === 0)}</div></div></div>${ex}`
-    + `<div class="w">Nasıl okunur: Bir kuralın çalıştığı günlerden 20 iş günü sonra fiyat, kuralın çalışmadığı günlere göre belirgin biçimde daha kötüyse o kural işe yarıyor demektir. Fark yoksa ya da tersiyse kural bu fonda bir şey eklemiyor. Yeni kurulmuş ve hızla büyüyen fonlarda “çok hızlı büyüme” kuralı sürekli çalışır, yanlış alarm verir. Geri test yalnızca bu beş kuralı kapsar; KAP duyurusu, işlem kapalılığı ve yoğunlaşma kurallarının geçmişi bu seride yok. Tek bir fonun geçmişidir ve genelleştirilemez. Kriz yaşamış fonlarda (örneğin THF, TLY) denemek için o fonu arayın.</div></details>`;
+  return `<details class="card" id="bt"><summary>Bu uyarılar bu fonun geçmişinde işe yaradı mı? (geri test)</summary>${ex}<div class="g">${rs}<div><div class="k">Hiçbir kuralın çalışmadığı günler</div><div class="v">${st(r => r.sev === 0)}</div></div></div>`
+    + `<div class="w">Nasıl okunur: Bir kuralın çalıştığı günlerden 20 iş günü sonra fiyat, kuralın çalışmadığı günlere göre belirgin biçimde daha kötüyse o kural fiyat düşüşünü öngörmüş demektir. Ama bazı krizlerde (fiyatın dondurulduğu, iade ödemelerinin durduğu fonlar) fiyat düşmez; asıl sorun paranın çıkamamasıdır. “Mevduatın çok üstünde getiri” kuralı, TLY örneğine bakılarak eklendi; tek örneğe uydurulmuş olabilir ve başka fonlarda yanlış alarm verebilir. Yeni kurulmuş ve hızla büyüyen fonlarda “çok hızlı büyüme” kuralı sürekli çalışır. Geri test yalnızca bu kuralları kapsar; KAP duyurusu, işlem kapalılığı ve yoğunlaşmanın geçmişi bu seride yok. Tek fonun geçmişidir, genelleştirilemez.</div></details>`;
 }
 function openBT() { const d = document.getElementById("bt"); if (d) { if (d.tagName === "DETAILS") d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
 let RA = null;
