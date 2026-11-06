@@ -11,7 +11,15 @@ module.exports = async (req, res) => {
   if (!IZIN.includes(ep)) return res.status(400).json({ error: "İzin verilmeyen uç" });
 
   const body = new URLSearchParams();
-  for (const [k, v] of Object.entries(req.query)) if (k !== "ep") body.set(k, String(v));
+  for (const [k, v] of Object.entries(req.query)) {
+    if (k !== "ep") {
+      if (Array.isArray(v)) {
+        v.forEach(item => body.append(k, String(item)));
+      } else {
+        body.set(k, String(v));
+      }
+    }
+  }
 
   try {
     const r = await fetch("https://www.tefas.gov.tr/api/DB/" + ep, {
