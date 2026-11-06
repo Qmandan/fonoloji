@@ -165,4 +165,214 @@ function alertsCard(c) {
   const out = [], push = (sev, t, d) => out.push({sev, t, d}), {pts, flows, tot, F, H, A, I, age} = c, N = pts.length, items = H.items || [];
   const lvl = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, f1 = v => v.toLocaleString("tr-TR", {maximumFractionDigits: 1}), nm = x => esc(x.asset_code || x.asset_name);
   const oks = [];
-  const f = (I && I.fund) || {}, st = f.trading_status
+  const f = (I && I.fund) || {}, st = f.trading_status, lastD = N ? pts[N - 1].date : null, stale = lastD ? Math.floor((Date.now() - new Date(lastD).getTime()) / 864e5) : null;
+  const closed = f.tefas_tradeable === false || f.alinabilir === false || /KAPALI/i.test(f.platform_status || "") || /tasfiye/i.test(f.alim_durumu || "") || (st && st !== "AKTİF");
+  if (closed) push(2, "Fon alım satıma kapalı", f.alim_durumu ? esc(String(f.alim_durumu).split(/\s*Benzer/)[0]) : `TEFAS’taki durumu: “${esc(st || f.platform_status || "kapalı")}”. Alım ya da satım yapılamıyor olabilir.`); else if (I && I.fund && Object.keys(I.fund).length) oks.push("Fon alım satıma açık");
+  if (stale != null && stale > 6) push(2, "Fon fiyatı açıklanmıyor", `Fonun son açıklanan fiyatı ${dt(new Date(lastD).getTime())} tarihli (${stale} gün önce). Fiyatı açıklanmayan fonda işlem yapılamayabilir; sayfadaki fiyat ve para hareketi bilgileri eskidir.`); else if (stale != null) oks.push("Fon fiyatı güncel (son fiyat " + dt(new Date(lastD).getTime()) + ")");
+  const kw = /tasfiye|temerrüt|temerrut|erteleme|ertelen|işleme kapat|işleme kapan|durdurul|sona erme|fesih|idari para|ceza|ödeme yapılamad|iade.{0,30}(ödeme|yapılamad)|hesaplama sıklığ|uzatıl|t\+10/;
+  const recent = (((A.disclosures || {}).items) || []).filter(x => Date.now() - x.publish_date < 60 * 864e5);
+  const hits = recent.filter(x => kw.test([x.subject, x.summary, x.ai_summary, x.ai_investor_impact].join(" ").toLocaleLowerCase("tr")));
+  const kapLi = x => `<div style="margin-top:8px"><a href="https://www.kap.org.tr/tr/Bildirim/${x.disclosure_index}" target="_blank" rel="noopener">${esc(String(x.summary || x.subject).trim().slice(0, 80))}</a> (${dt(x.publish_date)})${x.ai_summary ? "<br>" + esc(String(x.ai_summary).slice(0, 260)) : ""}</div>`;
+  if (hits.length) push(2, "KAP’ta endişe verici duyuru", `Son 60 günde ${hits.length} duyuruda tasfiye, ödeme sorunu, iade süresinin uzaması ya da fiyatlama değişikliği gibi ifadeler geçiyor.` + hits.slice(0, 3).map(kapLi).join(""));
+  if (!hits.length && (A.disclosures || {}).items) oks.push("KAP’ta endişe verici duyuru yok");
+  const imp = recent.filter(x => x.ai_importance >= 4 && !hits.includes(x));
+  if (imp.length) push(1, "KAP’ta önemli duyuru", `Son 60 günde önemli işaretlenmiş ${imp.length} duyuru var.` + imp.slice(0, 2).map(kapLi).join(""));
+  if (N > 16) {
+    const a0 = pts[N - 16], b = pts[N - 1], outPct = -tot / a0.total_value * 100, inv = (a0.investor_count - b.investor_count) / a0.investor_count * 100;
+    const worst = flows.length ? Math.min(...flows.map(r => r.pct)) : 0;
+    let l = lvl(outPct, ESIK.cikis15); if (l) push(l, "Fondan yüklü para çıkışı", `Son 15 günde fonun başlangıçtaki parasının yaklaşık %${f1(outPct)}’i çıktı (${f1(-tot / 1e6)} milyon TL). Çok para çıkan fon varlık satmak zorunda kalır; satış baskısı fiyatı düşürebilir.`);
+    l = lvl(inv, ESIK.kisi); if (l) push(l, "Fonu bırakan kişi sayısı hızla artıyor", `15 günde kişi sayısı %${f1(inv)} azaldı (${a0.investor_count} → ${b.investor_count}).`);
+    l = lvl(-worst, ESIK.gun); if (l) push(l, "Tek günde büyük çıkış", `En kötü günde fonun parasının %${f1(-worst)}’i tek günde çıktı.`); if (lvl(outPct, ESIK.cikis15) === 0) oks.push("15 günde belirgin para çıkışı yok"); if (lvl(inv, ESIK.kisi) === 0) oks.push("Fonu bırakan kişi sayısı normal"); if (lvl(-worst, ESIK.gun) === 0) oks.push("Tek günde büyük çıkış yok");
+  }
+  if (N > 61) {
+    const g = pts[N - 1].total_value / pts[N - 61].total_value, mr = Math.abs(pts[N - 1].price / pts[N - 22].price - 1) * 100;
+    let l = lvl(g, ESIK.buyume); if (l) push(l, "Fon çok hızlı büyüyor", `Fonun parası 60 günde ${f1(g)} katına çıktı. Haberlere göre THF de krizden önce bir ayda katlanarak büyümüştü. Çok hızlı büyüyen fonlar, küçük ve az işlem gören hisselerin fiyatını yukarı itebilir.`);
+    const mevAy = (Math.pow(1 + (parseFloat($("mev").value) || 11.85) / 100, 1 / 3) - 1) * 100, r21 = (pts[N - 1].price / pts[N - 22].price - 1) * 100;
+    l = lvl(r21 / mevAy, ESIK.mevKat); if (l && r21 >= 10) push(l, "Mevduatın çok üstünde getiri", `Son 21 işlem gününde fon %${f1(r21)} kazandırdı; aynı sürede mevduat yaklaşık %${f1(mevAy)}. Mevduatın birkaç katı süren getiri sürdürülebilir olmayabilir ve varlık fiyatlarının şişirilmiş olabileceğine işaret edebilir. Krize giren bazı fonların fiyatı da böyle sert yükseliyordu.`);
+    l = lvl(mr, ESIK.getiri); if (l) push(l, "Olağanüstü aylık getiri", `Fon fiyatı son ay içinde %${f1(mr)} değişti. Bu kadar sert hareket sürdürülebilir olmayabilir.`); if (lvl(g, ESIK.buyume) === 0) oks.push("Fon aşırı hızlı büyümüyor"); if (lvl(mr, ESIK.getiri) === 0) oks.push("Aylık fiyat hareketi olağan");
+  }
+  const real = items.filter(x => x.asset_type !== "cash" && x.weight > 0).sort((a, b) => b.weight - a.weight);
+  if (real.length) {
+    const t1 = real[0].weight, t3 = real.slice(0, 3).reduce((q, x) => q + x.weight, 0);
+    let l = lvl(t1, ESIK.tek); if (l) push(l, "Tek varlığa aşırı yoğunlaşma", `Fonun %${f1(t1)}’i tek bir varlıkta (${nm(real[0])}). O varlık düşerse fon çok etkilenir.`);
+    l = lvl(t3, ESIK.ilk3); if (l) push(l, "İlk üç varlıkta yoğunlaşma", `Fonun %${f1(t3)}’i yalnızca üç varlıkta.`); if (lvl(t1, ESIK.tek) === 0 && lvl(t3, ESIK.ilk3) === 0) oks.push("Fon tek bir varlığa aşırı bağlı değil");
+  }
+  const gross = items.reduce((q, x) => q + Math.max(0, x.weight), 0), shorts = items.filter(x => x.weight < 0 || /short|kısa|viop|türev/i.test(x.direction || x.asset_type || ""));
+  let lb = lvl(gross, ESIK.brut); if (lb) push(lb, "Fon, kendi parasından fazla varlık taşıyor", `Varlıkların toplamı fonun parasının %${f1(gross)}’i. Fark borçlanma ya da kaldıraçla sağlanıyor olabilir; kayıplar büyüyebilir.`);
+  if (shorts.length) push(1, "Açığa satış, VİOP ya da kısa pozisyon var", `${shorts.length} kalemde kısa/kaldıraçlı pozisyon görünüyor (${shorts.slice(0, 3).map(nm).join(", ")}). Fiyat yükselirse veya piyasa ters yöne kayarsa kayıpları artırabilir.`); if (lvl(gross, ESIK.brut) === 0) oks.push("Fon kendi parasından fazla varlık taşımıyor"); if (!shorts.length) oks.push("Açığa satış / VİOP riski görünmüyor");
+  const brand = String((F && F.manager) || "").split(/\s+portf/i)[0].trim().toLocaleLowerCase("tr").split(/\s+/).filter(w => w.length > 1);
+  if (brand.length) {
+    const grp = items.filter(x => x.asset_type !== "cash" && x.weight > 0 && x.asset_name && brand.every(w => String(x.asset_name).toLocaleLowerCase("tr").split(/[\s.,]+/).includes(w))), gw = grp.reduce((q, x) => q + x.weight, 0), l = lvl(gw, ESIK.grup);
+    if (l) push(l, "Fon, yönetici şirketin grubuna yatırım yapmış olabilir", `Adı yönetici şirketle (“${esc(brand.join(" "))}”) örtüşen varlıklar fonun %${f1(gw)}’i: ${grp.slice(0, 3).map(nm).join(", ")}. Bu bir ad benzerliği ipucudur, kesin değildir. Aynı gruptaki varlıklar birlikte düşebilir.`); else oks.push("Yönetici şirketin grubuna yatırım görünmüyor");
+  }
+  const bad = items.filter(x => x.weight >= 3 && x.stock_change_pct != null && x.stock_change_pct <= -ESIK.cokus), bw = bad.reduce((q, x) => q + x.weight, 0);
+  if (bad.length) push(bw >= 10 ? 2 : 1, "Fondaki büyük bir varlık bugün sert düştü", bad.map(x => `${nm(x)} %${f1(x.stock_change_pct)} (fonda %${f1(x.weight)})`).join("; ") + "."); else if (items.some(x => x.weight >= 3)) oks.push("Fondaki büyük varlıklar bugün sert düşmedi");
+  if (age != null && age > 35) push(1, "Portföy raporu eski", `Fonun son raporu ${age} gün önce yayımlandı; ay içinde portföy değişmiş olabilir.`); else if (age != null) oks.push("Portföy raporu güncel");
+  out.sort((a, b) => b.sev - a.sev);
+  const red = out.filter(x => x.sev === 2).length, yel = out.length - red, ttl = out.length ? [red ? red + " kırmızı" : "", yel ? yel + " sarı" : ""].filter(Boolean).join(", ") : "belirgin uyarı yok";
+  let h = `<div class="card alerts ${red ? "r" : yel ? "y" : "g"}"><b>Erken uyarı: <span class="${red ? "dn" : yel ? "" : "up"}">${ttl}</span></b>`;
+  out.forEach(x => h += `<div class="al ${x.sev === 2 ? "r" : "y"}"><i>${x.sev === 2 ? "Kırmızı" : "Sarı"}</i><div><b>${x.t}</b><div class="m">${x.d}</div></div></div>`);
+  if (oks.length) h += `<div class="oks"><b>Sorun görünmeyenler</b><div class="okg">${oks.map(t => "<span>✓ " + t + "</span>").join("")}</div></div>`;
+  if (!out.length) h += '<div class="m">Ölçebildiğim ölçütlerde bir sorun görünmüyor. Bu, risk olmadığı anlamına gelmez: varlıkların fiyatı düşürmeden satılabilirliğini (likidite) ve fiyat şişirmeyi ölçemiyorum.</div>';
+  h += '<div class="w">Bu uyarılar basit eşiklere dayanır; bir sorunun varlığını kanıtlamaz, yokluğunu da garanti etmez. Fonu satıp satmamak sizin kararınızdır. Aracı kurumunuzdan fonun iade (paraya çevirme) esaslarını, emir saatlerini ve paranın kaç iş günde hesaba geçeceğini öğrenin; fon işleme kapatılırsa satış yapılamayabilir. Yatırım tavsiyesi değildir.</div>';
+  h += '<button type="button" class="lnk" onclick="openBT()">Bu uyarılar geçmişte işe yaradı mı? Geri testi göster</button>';
+  h += '<details><summary>SPK’nın son düzenlemeleri (özet)</summary><div><b>26 Ekim 2026:</b> Nitelikli yatırımcı için finansal varlık şartı 50 milyon TL oldu; serbest fonlar yalnızca nitelikli yatırımcılara satılabilir.</div><div><b>17 Eylül 2026:</b> Tera dahil 7 portföy şirketinin fonları TEFAS’ta işleme kapatıldı ve tasfiyesine karar verildi. Ödeme tarihi ve tutarı bu kararla belirlenmedi.</div><div><b>28 Ağustos 2026 (Yatırım Fonları Rehberi):</b> Serbest fonlara yoğunlaşma sınırı: %5’i aşan pozisyonların toplamı en çok %20; tek hisse için sınır hissenin halka açık oranına göre. Repo ve ters repo işlemleri Takasbank güvencesine bağlandı, serbest fonlarda %20 ile sınırlı. Para piyasası fonlarında en az %10 devlet tahvili şartı. Bir fonda %30 ve üzeri pay sahipliği KAP’ta ilan edilecek. Aşımlar 31 Ekim’e kadar 1/3, 30 Kasım’a kadar 2/3, 31 Aralık’ta tamamen kapatılacak; yani bazı fonlar şu anda zorunlu satış yapıyor olabilir. Fonun yatırımcıdan geri alımı (satış) durdurulamaz.</div><div>Bu bir özettir; kesin hükümler için SPK metnine ve fonun izahnamesine bakın.</div></details></div>';
+  return {top: out.slice(0, 2).map(x => x.t), stale, lastD, html: h, text: out.length ? `Erken uyarı: ${ttl} uyarı var; ayrıntısı en üstteki kutuda.` : "Erken uyarı: ölçebildiğim ölçütlerde belirgin bir uyarı yok.", red, yel};
+}
+function top5Card(H, X, tot, comps) {
+  const all = H.holdings || [], items = (H.items || []).filter(x => x.asset_type === "stock" && x.weight > 0).sort((a, b) => b.weight - a.weight).slice(0, 5);
+  if (!items.length) return "";
+  const an = {}; (((X && X.analysts) || {}).items || []).forEach(x => an[x.ticker] = x);
+  const cm = {}; (comps || []).forEach(c => cm[c.ticker] = c);
+  const chOf = x => x.stock_change_pct != null ? x.stock_change_pct : (cm[x.asset_code] && cm[x.asset_code].weight ? (cm[x.asset_code].change_pct != null ? cm[x.asset_code].change_pct : cm[x.asset_code].contribution / cm[x.asset_code].weight * 10000) : null);
+  const prev = {}; (H.previousItems || []).forEach(x => prev[x.asset_code] = x.weight);
+  const months = [...new Set(all.map(x => x.report_date))].sort(), t1 = (v, d) => v == null ? "—" : v.toLocaleString("tr-TR", {maximumFractionDigits: d == null ? 1 : d});
+  const sw = items.reduce((q, x) => q + x.weight, 0), chg = items.filter(x => chOf(x) != null), cw = chg.reduce((q, x) => q + x.weight, 0), eff = chg.reduce((q, x) => q + x.weight * chOf(x) / 100, 0);
+  let h = `<div class="card"><b>İlk 5 hisse: ayrıntılı bakış</b><div class="m">Bu beş hisse fonun %${t1(sw)}’i.${chg.length ? ` Bugünkü hareketleri fonun değerine yaklaşık ${f2(eff, 2)} puan etki ediyor (ağırlıklı ortalama değişim %${f2(eff / cw * 100, 2)}).` : ""}</div><div class="st5">`;
+  items.forEach(x => {
+    const k = x.asset_code, a = an[k], pw = prev[k], d = pw == null ? null : x.weight - pw;
+    const hist = months.map(m => { const r = all.find(y => y.report_date === m && y.asset_code === k && y.asset_type === "stock"); return r ? r.weight : 0; });
+    const mx = Math.max(...hist, 1), pts = hist.map((v, i) => (i / Math.max(1, hist.length - 1) * 238 + 1).toFixed(1) + "," + (38 - v / mx * 34).toFixed(1)).join(" ");
+    const lot = x.nominal_lots_delta, pc = Math.abs((x.nominal_change_pct || 0) * 100);
+    const move = pw == null ? "Geçen ayki listede yoktu; yeni alınmış olabilir." : lot > 0 ? `Yönetici bu ay ${n0(lot)} lot (%${t1(pc)}) artırdı.` : lot < 0 ? `Yönetici bu ay ${n0(-lot)} lot (%${t1(pc)}) azalttı.` : "Yönetici bu ay adedini değiştirmedi.";
+    const press = tot < 0 ? -tot * x.weight / 100 : null, ch = chOf(x), pr = x.stock_price != null ? x.stock_price : (a && a.closePrice);
+    const row = (l, v) => `<div class="r"><span>${l}</span><span>${v}</span></div>`;
+    h += `<div class="sc5"><div class="sh"><b>${esc(k)}</b><span class="m">${esc(String(x.asset_name).slice(0, 34))}</span></div>`
+      + `<div class="big2">%${t1(x.weight, 2)} <span class="m">fondaki payı${d == null ? "" : " · önceki ay %" + t1(pw, 2) + " (" + f2(d, 2) + " puan)"}</span></div>`
+      + `<svg viewBox="0 0 240 40" preserveAspectRatio="none" role="img" aria-label="Son ${hist.length} ayda fondaki payı"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+      + `<div class="m">Son ${hist.length} ayda payı: en düşük %${t1(Math.min(...hist), 1)}, en yüksek %${t1(Math.max(...hist), 1)}</div>`
+      + row("Yöneticinin hareketi", move)
+      + row("Bugün", ch == null ? "—" : `${pr != null ? t1(pr, 2) + " TL · " : ""}<b class="${cl(ch)}">%${f2(ch)}</b>`)
+      + row("Fona bugünkü etkisi", ch == null ? "—" : `<b class="${cl(ch)}">${f2(x.weight * ch / 100, 2)} puan</b>`)
+      + row("Aracı kurum görüşü", a && a.recommendation ? `${a.brokerCount} kurum · ${esc(a.recommendation)} · yükselme potansiyeli %${t1(a.potentialPct, 0)} · F/K ${t1(a.peRatio)}` : "Görüş yok")
+      + (press != null ? row("Tahmini satış baskısı", `yaklaşık ${t1(press / 1e6, 1)} milyon TL`) : "")
+      + "</div>";
+  });
+  return h + `</div><div class="w">Fonların günlük alım satımı borsadan doğrudan izlenemez; portföy ayda bir yayımlanır. Burada yöneticinin hareketini aylık rapor farkından tahmin ediyoruz. “Tahmini satış baskısı”, son 15 gündeki para çıkışının fonun tüm hisselerine oransal yansıdığını varsayan bir hesaptır; yönetici gerçekte farklı hisseleri satmış olabilir. Bazı veri sağlayıcılarda aracı kurum bazlı günlük alım satım verisi bulunur, ancak bu veri hangi fonun işlem yaptığını göstermez. Hisse fiyatı ve kurum görüşü anlıktır, rapor tarihindeki değildir. Yatırım tavsiyesi değildir.</div></div>`;
+}
+function moneyCard(pts, E) {
+  const N = pts.length; if (N < 17) return "";
+  const amt = parseFloat(localStorage.getItem("amt")) || 100000, a = pts[N - 16], b = pts[N - 1], r = b.price / a.price - 1, days = Math.round((new Date(b.date) - new Date(a.date)) / 864e5);
+  const mev = parseFloat($("mev").value) || 11.85, td = (parseFloat($("td").value) || 17.5) / 100, dnet = (Math.pow(1 + mev / 100, days / 91.25) - 1) * (1 - td), fv = amt * (1 + r), dv = amt * (1 + dnet), est = E.estimated_change_pct, sg = v => (v < 0 ? "−" : "+") + n0(Math.abs(v)) + " TL";
+  return `<div class="card"><b>Benim paramla ne olurdu?</b><div class="row" style="margin-top:12px"><label class="m" for="amt">Tutar (TL)</label><input id="amt" type="number" min="0" step="1000" value="${amt}" style="width:160px;max-width:none"></div>`
+    + `<div class="g"><div><div class="k">${a.date} tarihinde bu fona yatırsaydınız, ${b.date} tarihinde</div><div class="v ${cl(r)}">${n0(fv)} TL</div><div class="k">${sg(fv - amt)} (%${f2(r * 100, 1)})</div></div>`
+    + `<div><div class="k">Aynı para bankada mevduatta olsaydı (vergi sonrası)</div><div class="v up">${n0(dv)} TL</div><div class="k">${sg(dv - amt)}</div></div>`
+    + `<div><div class="k">Fon ile mevduat arasındaki fark</div><div class="v ${cl(fv - dv)}">${sg(fv - dv)}</div></div>`
+    + (est != null ? `<div><div class="k">Bugünkü tahmine göre bir günde</div><div class="v ${cl(est)}">${sg(amt * est / 100)}</div></div>` : "")
+    + `</div><div class="w">Geçmiş getiri, gelecekte aynı olacağı anlamına gelmez. Mevduat, sayfadaki “Fon bulucu” kutusundaki orana göre (3 ayda %${mev}) ${days} gün için, vergi sonrası hesaplandı. Fonu satarken ödenecek vergi ve masraflar hesaba katılmadı.</div></div>`;
+}
+function chartCard(pts) {
+  if (pts.length < 30) return "";
+  const P = pts.slice(-252), pr = P.map(x => x.price), mn = Math.min(...pr), mx = Math.max(...pr), W = 600, Hh = 170;
+  const xy = (i, v) => (i / (P.length - 1) * W).toFixed(1) + "," + (Hh - 8 - (v - mn) / ((mx - mn) || 1) * (Hh - 24)).toFixed(1);
+  const line = pr.map((v, i) => xy(i, v)).join(" ");
+  const me = {}, order = []; P.forEach(x => { const k = x.date.slice(0, 7); if (!(k in me)) order.push(k); me[k] = x.price; });
+  const mr = order.slice(1).map((k, i) => ({k, r: (me[k] / me[order[i]] - 1) * 100})), lb = k => MA[+k.slice(5, 7) - 1] + " " + k.slice(2, 4);
+  let peak = pr[0], pi = 0, dd = 0, dp = 0, di = 0; pr.forEach((v, i) => { if (v > peak) { peak = v; pi = i; } if (v / peak - 1 < dd) { dd = v / peak - 1; dp = pi; di = i; } });
+  const worst = mr.reduce((q, x) => x.r < q.r ? x : q, mr[0] || {r: 0, k: order[0] || ""}), best = mr.reduce((q, x) => x.r > q.r ? x : q, mr[0] || {r: 0, k: order[0] || ""});
+  return `<div class="card"><b>Fiyat grafiği: son ${P.length} işlem günü</b>`
+    + `<svg class="chart" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img" aria-label="Fon fiyatı grafiği"><polygon points="0,${Hh} ${line} ${W},${Hh}" fill="currentColor" opacity=".12"/><polyline points="${line}" fill="none" stroke="currentColor" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`
+    + `<div class="cx"><span>${P[0].date}</span><span>${P[P.length - 1].date}</span></div>`
+    + `<div class="g"><div><div class="k">En kötü ay</div><div class="v dn">${worst.k ? lb(worst.k) : "—"} · %${f2(worst.r, 1)}</div></div><div><div class="k">En iyi ay</div><div class="v up">${best.k ? lb(best.k) : "—"} · %${f2(best.r, 1)}</div></div><div><div class="k">Tepeden dibe en büyük düşüş</div><div class="v dn">%${f2(dd * 100, 1)}</div><div class="k">${P[dp].date} → ${P[di].date}</div></div></div>`
+    + `<div class="m">Ay ay getiri (vergi öncesi):</div><div class="mch">${mr.slice(-12).map(x => `<span class="mchip ${x.r >= 0 ? "up" : "dn"}">${lb(x.k)} ${f2(x.r, 1)}</span>`).join("")}</div>`
+    + `<div class="w">“Tepeden dibe düşüş”, fonun gördüğü en yüksek fiyattan sonraki en düşük fiyata kadar kaybettiği orandır. Fonu en kötü zamanda tutsaydınız yaşayacağınız kaybı gösterir. Geçmiş, geleceğin aynısı olmayabilir.</div></div>`;
+}
+function backtestCard(pts) {
+  const N = pts.length; if (N < 100) return `<div class="card" id="bt"><b>Geri test yapılamadı</b><div class="m">Bu fonun fiyat geçmişi yalnızca ${N} işlem günü. Uyarıların geçmişte işe yarayıp yaramadığını görmek için en az 100 işlem günü gerekir.</div></div>`;
+  const L = (v, e) => v >= e[1] ? 2 : v >= e[0] ? 1 : 0, rows = [], mevAy = (Math.pow(1 + (parseFloat($("mev").value) || 11.85) / 100, 1 / 3) - 1) * 100;
+  const names = ["Para çıkışı (15 günde)", "Kişi kaybı (15 günde)", "Tek günde büyük çıkış", "Çok hızlı büyüme (60 günde)", "Olağanüstü aylık getiri", "Mevduatın çok üstünde getiri"];
+  for (let i = 75; i < N; i++) {
+    const a = pts[i - 15], b = pts[i], r21 = (b.price / pts[i - 21].price - 1) * 100; let fl = 0, worst = 0;
+    for (let j = i - 14; j <= i; j++) { const f = pts[j].total_value - pts[j - 1].total_value * pts[j].price / pts[j - 1].price; fl += f; worst = Math.min(worst, f / pts[j - 1].total_value * 100); }
+    const sevs = [L(-fl / a.total_value * 100, ESIK.cikis15), L((a.investor_count - b.investor_count) / a.investor_count * 100, ESIK.kisi), L(-worst, ESIK.gun), L(b.total_value / pts[i - 60].total_value, ESIK.buyume), L(Math.abs(r21), ESIK.getiri), r21 >= 10 ? L(r21 / mevAy, ESIK.mevKat) : 0];
+    rows.push({d: b.date, sevs, sev: Math.max(...sevs), fwd: i + 20 < N ? (pts[i + 20].price / b.price - 1) * 100 : null});
+  }
+  const lastD = pts[N - 1].date, stale = Math.floor((Date.now() - new Date(lastD).getTime()) / 864e5), gun = d => Math.round((new Date(lastD) - new Date(d)) / 864e5);
+  const st = f => { const a = rows.filter(f), v = a.filter(r => r.fwd != null).map(r => r.fwd), bos = a.length - v.length;
+    return `${a.length} gün` + (v.length ? ` · 20 iş günü sonra ortalama %${f2(v.reduce((q, x) => q + x, 0) / v.length, 1)} · %${Math.round(v.filter(x => x < 0).length / v.length * 100)}’inde düşüş` : "") + (bos ? ` · ${bos} günün sonrası bilinmiyor` : "") + (a.length ? `<br><span class="m">ilk çalıştığı gün: ${a[0].d}${stale > 6 ? " (fiyatın durmasından " + gun(a[0].d) + " gün önce)" : ""}</span>` : ""); };
+  const fy = rows.find(r => r.sev >= 1), fr = rows.find(r => r.sev === 2);
+  let ex = "";
+  if (stale > 6) ex = `<div class="w">Bu fonun fiyatı ${lastD} tarihinde durmuş. Ölçülebilen kuralların ilk sarı uyarısı ${fy ? fy.d + " (fiyatın durmasından " + gun(fy.d) + " gün önce)" : "hiç çıkmadı"}, ilk kırmızı uyarısı ${fr ? fr.d + " (" + gun(fr.d) + " gün önce)" : "hiç çıkmadı"}. Fiyatı dondurulan bir fonda risk fiyat düşüşü değil, paranın çıkamamasıdır; bu yüzden fiyat odaklı sonuçlar tek başına yanıltıcı olabilir.</div>`;
+  const rs = names.map((n, k) => `<div><div class="k">${n} kuralı çalışan günler</div><div class="v">${st(r => r.sevs[k] >= 1)}</div></div>`).join("");
+  return `<details class="card" id="bt"><summary>Bu uyarılar bu fonun geçmişinde işe yaradı mı? (geri test)</summary>${ex}<div class="g">${rs}<div><div class="k">Hiçbir kuralın çalışmadığı günler</div><div class="v">${st(r => r.sev === 0)}</div></div></div>`
+    + `<div class="w">Nasıl okunur: Bir kuralın çalıştığı günlerden 20 iş günü sonra fiyat, kuralın çalışmadığı günlere göre belirgin biçimde daha kötüyse o kural fiyat düşüşünü öngörmüş demektir. Ama bazı krizlerde (fiyatın dondurulduğu, iade ödemelerinin durduğu fonlar) fiyat düşmez; asıl sorun paranın çıkamamasıdır. “Mevduatın çok üstünde getiri” kuralı, TLY örneğine bakılarak eklendi; tek örneğe uydurulmuş olabilir ve başka fonlarda yanlış alarm verebilir. Yeni kurulmuş ve hızla büyüyen fonlarda “çok hızlı büyüme” kuralı sürekli çalışır. Geri test yalnızca bu kuralları kapsar; KAP duyurusu, işlem kapalılığı ve yoğunlaşmanın geçmişi bu seride yok. Tek fonun geçmişidir, genelleştirilemez.</div></details>`;
+}
+function openDetay() { const d = document.getElementById("detay"); if (d) { d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
+function openBT() { const dd = document.getElementById("detay"); if (dd) dd.open = true; const d = document.getElementById("bt"); if (d) { if (d.tagName === "DETAILS") d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
+let RA = null;
+function wireAmt() {
+  const am = document.getElementById("amt");
+  if (am) am.onchange = () => { localStorage.setItem("amt", am.value); if (RA) { $("out").innerHTML = `<div class="m">Son yenileme: ${new Date().toLocaleTimeString("tr-TR")}</div>` + render(...RA); polish($("out")); wireAmt(); } };
+}
+const SEK = {"Finance": "Finans (bankalar, sigorta)", "Energy Minerals": "Enerji (petrol, doğalgaz, kömür)", "Non-Energy Minerals": "Madencilik ve metal", "Retail Trade": "Perakende (marketler)", "Process Industries": "Kimya ve işlenmiş malzeme", "Technology Services": "Teknoloji hizmetleri", "Transportation": "Ulaştırma", "Consumer Durables": "Dayanıklı tüketim", "Utilities": "Elektrik, su, gaz", "Producer Manufacturing": "Sanayi üretimi", "Communications": "Haberleşme"};
+function valCard(X, lab, red) {
+  const Fu = X && X.fundamentals, An = X && X.analysts;
+  if (!Fu || !Fu.weighted) return {html: "", text: ""};
+  const w = Fu.weighted, rc = (An && An.recCount) || {}, rated = (rc.AL || 0) + (rc.TUT || 0) + (rc.SAT || 0);
+  const t1 = (v, d) => v == null ? "—" : v.toLocaleString("tr-TR", {maximumFractionDigits: d == null ? 1 : d});
+  const rows = [
+    ["Kâra göre fiyat (F/K)", t1(w.peRatio), w.peRatio == null ? null : w.peRatio <= 15 ? 1 : w.peRatio > 25 ? -1 : 0, "Hisseler, şirketlerin yıllık kârının yaklaşık " + t1(w.peRatio, 0) + " katı fiyattan işlem görüyor. Düşük sayı ucuz, yüksek sayı pahalı demektir."],
+    ["Kayıtlı değere göre fiyat (PD/DD)", t1(w.pbRatio, 2), w.pbRatio == null ? null : w.pbRatio <= 1.5 ? 1 : w.pbRatio > 3 ? -1 : 0, "Şirketler, kayıtlardaki öz değerlerinin yaklaşık " + t1(w.pbRatio, 1) + " katı fiyatlanıyor. 1 civarı, öz değerine yakın demektir."],
+    ["Şirketlerin kârlılığı (%)", t1(w.returnOnEquity), w.returnOnEquity == null ? null : w.returnOnEquity >= 15 ? 1 : w.returnOnEquity < 8 ? -1 : 0, "Şirketler, sahiplerinin parasıyla yılda yaklaşık %" + t1(w.returnOnEquity, 0) + " kâr üretiyor. Yüksek olması iyidir."],
+    ["Şirketlerin borcu (borç / öz değer)", t1(w.debtToEquity, 2), w.debtToEquity == null ? null : w.debtToEquity <= 1.5 ? 1 : w.debtToEquity > 3 ? -1 : 0, "Şirketlerin borcu, öz değerlerinin yaklaşık " + t1(w.debtToEquity, 1) + " katı. Düşük olması daha az borç demektir. Bankalarda bu oran doğası gereği yüksektir."],
+    ["Aracı kurumların görüşü", rated ? (rc.AL || 0) + " AL, " + (rc.TUT || 0) + " TUT, " + (rc.SAT || 0) + " SAT" : "—", rated ? ((rc.AL || 0) / rated >= 0.7 ? 1 : (rc.SAT || 0) / rated >= 0.4 ? -1 : 0) : null, "Fondaki hisseler için aracı kurumların verdiği tavsiyeler. Çoğu kurum genelde AL der; geçmişte tutup tutmadığı bilinmiyor."]
+  ];
+  const v = rows.filter(r => r[2] != null), sc = v.reduce((q, r) => q + r[2], 0), n = v.length;
+  const ver = sc >= 3 ? "Olumlu" : sc <= -3 ? "Olumsuz" : "Karışık";
+  let ov;
+  if (ver === "Olumlu" && lab === "SAT eğilimi") ov = "Göstergeler çelişiyor: hisseler kâra ve öz değere göre ucuz görünüyor, ama fonun fiyatı son günlerde düşüyor. Ucuz görünen bir şey kısa sürede daha da ucuzlayabilir; fiyatın ne zaman döneceği bilinemez.";
+  else if (ver === "Olumlu" && lab === "AL eğilimi") ov = "İki bakış da aynı yönde olumlu: hisseler ucuz görünüyor ve fon son günlerde yükselişte. Bu yine de gelecekte kazandıracağı anlamına gelmez.";
+  else if (ver === "Olumsuz" && lab === "SAT eğilimi") ov = "İki bakış da aynı yönde olumsuz: hisseler pahalı ya da zayıf görünüyor ve fonun fiyatı düşüyor.";
+  else if (ver === "Olumsuz" && lab === "AL eğilimi") ov = "Göstergeler çelişiyor: fon son günlerde yükseliyor ama hisselerin değerlemesi zayıf ya da pahalı görünüyor.";
+  else ov = "Göstergeler tek bir yönü göstermiyor.";
+  if (red) ov = "Kırmızı uyarı olduğu için bu değerlendirme güvenilir değildir: hisseler ucuz görünse bile fonun içindeki sorunlar (para çıkışı, işlem kapalılığı, yoğunlaşma) fiyatı belirler.";
+  let h = `<div class="card"><b>Fonun hisselerinin finansal değerlendirmesi: <span class="${ver === "Olumlu" ? "up" : ver === "Olumsuz" ? "dn" : ""}">${ver}</span></b> <span class="m">(${n} ölçütten ${sc} puan)</span><div class="m">Hisse bölümünün fonun %${t1(Fu.coverage && Fu.coverage.totalWeight)}’i, ${(Fu.coverage && Fu.coverage.stockCount) || "—"} şirket üzerinden</div>`;
+  rows.forEach(r => h += `<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${r[0]}</b><span class="${r[2] > 0 ? "up" : r[2] < 0 ? "dn" : "m"}">${r[1]}${r[2] == null ? "" : r[2] > 0 ? " · olumlu" : r[2] < 0 ? " · olumsuz" : " · orta"}</span></div><div class="m">${r[3]}</div></div>`);
+  if ((Fu.topSectors || []).length) h += `<div style="margin-top:8px"><b>En büyük sektörler:</b> ${Fu.topSectors.slice(0, 4).map(x => esc(SEK[x.sector] || x.sector) + " %" + t1(x.weight)).join(" · ")}</div>`;
+  h += `<div class="w">${ov}</div>`;
+  const it = ((An && An.items) || []).filter(x => x.recommendation && x.weight > 0).slice(0, 8);
+  if (it.length) {
+    h += '<table style="margin-top:8px"><tr><th>Hisse</th><th>Fondaki payı %</th><th>Güncel fiyat</th><th>Kurumlara göre yükselme potansiyeli %</th><th>Görüş</th><th>Kaç kurum</th></tr>';
+    it.forEach(x => h += `<tr><td>${esc(x.ticker)} <span class="m">${esc(String(x.name).slice(0, 22))}</span></td><td>${t1(x.weight, 2)}</td><td>${t1(x.closePrice, 2)}</td><td>${t1(x.potentialPct, 0)}</td><td>${esc(x.recommendation)}</td><td>${x.brokerCount}</td></tr>`);
+    h += "</table>";
+  }
+  h += '<div class="w">Bu ölçütler bir hissenin ucuz, kârlı ve az borçlu olup olmadığını anlatır; 3 gün sonraki fiyatı belirlemez. Kurumların hedef fiyatları ve AL önerileri bir görüştür. Enflasyonlu ortamda TL hedefler yüksek görünür ve geçmişte tutmayabilir. Yatırım tavsiyesi değildir.</div></div>';
+  const T = n ? `Fonun hisseleri finansal olarak ${ver === "Olumlu" ? "ucuz ve sağlam" : ver === "Olumsuz" ? "pahalı ya da zayıf" : "karışık"} görünüyor (F/K ${t1(w.peRatio, 1)}${rated ? "; " + rated + " kurumdan " + (rc.AL || 0) + "’i AL diyor" : ""}), ama bu fiyatın yakında yükseleceği anlamına gelmez.` : "";
+  return {html: h, text: T};
+}
+function polish(root, open) {
+  root.querySelectorAll("table").forEach(t => {
+    const hs = [...t.querySelectorAll("tr:first-child th")].map(x => x.textContent.trim());
+    t.querySelectorAll("tr").forEach(r => [...r.children].forEach((c, i) => { if (c.tagName === "TD") c.dataset.label = hs[i] || ""; }));
+    const n = t.querySelectorAll("tr").length - 1;
+    if (!open && n > 6 && !t.closest("details") && !t.classList.contains("keep")) {
+      const d = document.createElement("details"); d.className = "tbl";
+      d.innerHTML = `<summary>Ayrıntılı tabloyu göster (${n} satır)</summary>`;
+      t.replaceWith(d); d.appendChild(t);
+    }
+  });
+}
+const TUR = {stock: "Hisse", foreign_stock: "Yabancı hisse", cash: "Nakit / mevduat", corporate_bond: "Şirket tahvili", government_bond: "Devlet tahvili", fund: "Başka fon", gold: "Altın"};
+function render(c, P, A, T, I, X) {
+  const F = (P.allocation || {}).fund || {}, H = P.holdings || {}, E = ((A.estimate || {}).estimate) || {}, AC = A["estimate-accuracy"] || {}, pts = ((T.nav || {}).points) || [];
+  const pub = H.latestPublishDate, age = pub ? Math.floor((Date.now() - pub) / 864e5) : null;
+  const latest = ((P.dates || {}).items || [])[0], fresh = latest && H.latestPeriod ? latest.report_date === H.latestPeriod : null;
+  let h = `<div class="card"><b>${esc(F.name || c)}</b><div class="m">${esc(F.category)} · ${esc(F.manager)}</div><div class="g">${kv("Fonun toplam parası (TL)", n0(F.aum))}${kv("Fonu alan kişi sayısı", n0(F.investors))}${kv("Risk puanı (1 az, 7 çok)", esc(F.risk))}${kv("Portföy raporunun ayı", esc(H.latestPeriod || "—"))}${kv("Rapor ne zaman yayımlandı", pub ? dt(pub) : "—")}${kv("Raporun yaşı", age == null ? "—" : age + " gün", age > 35 ? "dn" : "")}</div>`;
+  if (fresh === false) h += '<div class="w">Fon daha yeni bir rapor yayımlamış; aşağıdaki liste biraz eski kalmış olabilir.</div>';
+  if (age > 35) h += '<div class="w">Bu rapor bir aydan eski; fon yeni bir rapor yayımlamış olabilir.</div>';
+  h += "</div>";
+  if (/serbest/i.test((F.category || "") + " " + (F.name || ""))) h += '<div class="w">Bu bir serbest fon. Serbest fonları yalnızca en az 50 milyon TL finansal varlığı olan “nitelikli yatırımcılar” alabilir (SPK, 26 Ekim 2026). Bu şartı taşımıyorsanız fonu alamayabilirsiniz; aşağıdaki bilgiler sadece bilgi içindir.</div>';
+  // tahmin
+  const hist = AC.history || [], n = hist.length;
+  const hit = hist.filter(r => (r.estimated_change_pct > 0) === (r.actual_change_pct > 0)).length;
+  const mae = n ? hist.reduce((s, r) => s + Math.abs(r.estimated_change_pct - r.actual_change_pct), 0) / n : null;
+  const bias = n ? hist.reduce((s, r) => s + r.estimated_change_pct - r.actual_change_pct, 0) / n : null;
+  h += `<div class="card"><div class="k">Bugün için tahmini değişim (yüzde)</div><div class="big ${cl(E.estimated_change_pct)}">%${f2(E.estimated_change_pct)}</div><div class="m">Borsa: ${esc(({acik: "açık", kapali: "kapalı"})[E.seans_durumu] || E.seans_durumu || "—")} · tahminin güvenilirliği %${E.confidence != null ? Math.round(E.confidence * 100) : "—"} · fonun hisselerinin %${n0(E.stock_coverage_pct)}’i hesaba katıldı</div>`;
+  if (n) h += `<div class="g">${kv("Son " + n + " günde tahmin yönü doğru çıktı", hit + " / " + n)}${kv("Tahmin ortalama ne kadar şaştı", "%" + mae.toFixed(2) + " puan")}${kv("Tahminler genelde", Math.abs(bias) < 0.05 ? "dengeli" : bias < 0 ? "biraz düşük kalmış" : "biraz yüksek kalmış")}</div><div class="w">Bu, tahminin geçmişte ne kadar tuttuğunu gösterir. Gelecekte de aynı kadar tutacağı garanti değildir.</div>`;
+  h += "</div>";
+  // sinyal ve akış
+  const estMap = {};
+  hist.forEach(x => { if (x.date) estMap[x.date] = x.estimated_change_pct; });
+  let flows = [];
+  for (let i = Math.max(1, pts.length - 15); i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i],
