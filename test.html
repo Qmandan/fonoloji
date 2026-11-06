@@ -18,6 +18,7 @@ pre{white-space:pre-wrap;word-break:break-all;background:rgba(127,127,127,.15);p
 <button data-e="list">Fon listesi (1 aylık getiriye göre)</button>
 <button data-e="bm">Mevduat kıyası</button>
 <button data-e="fin">Hisselerin finansalları</button>
+<button id="tefas">TEFAS getiri karşılaştırma</button>
 <button id="dl">Tam veriyi indir (.txt)</button>
 <pre id="out">Henüz bir şey seçilmedi.</pre>
 <script>
@@ -45,6 +46,17 @@ document.querySelectorAll("button[data-e]").forEach(b => b.onclick = async () =>
     out.textContent = "HTTP " + r.status + " (özet)\n" + body;
   } catch (e) { out.textContent = "Hata: " + e.message; full = ""; }
 });
+document.getElementById("tefas").onclick = async () => {
+  const d = new Date(), f = x => String(x.getDate()).padStart(2, "0") + "." + String(x.getMonth() + 1).padStart(2, "0") + "." + x.getFullYear();
+  const q = new URLSearchParams({ ep: "BindComparisonFundReturns", calismatipi: "2", fontip: "YAT", sfontur: "", kurucukod: "", fongrup: "", fonturkod: "", fonunvantip: "", strperiod: "1,1,1,1,1,1,1", islemdurum: "1", bastarih: f(d), bittarih: f(d) });
+  out.textContent = "TEFAS’a soruluyor…"; name = "tefas-getiri";
+  try {
+    const r = await fetch("/api/tefas?" + q, { headers: { "x-app-code": document.getElementById("app").value } });
+    const t = await r.text(); full = "HTTP " + r.status + "\n" + t;
+    let body = t; try { body = JSON.stringify(trim(JSON.parse(t)), null, 1); } catch (e) { body = t.slice(0, 1500); }
+    out.textContent = "HTTP " + r.status + " (özet)\n" + body;
+  } catch (e) { out.textContent = "Hata: " + e.message; full = ""; }
+};
 document.getElementById("dl").onclick = () => {
   if (!full) return;
   const a = document.createElement("a");
