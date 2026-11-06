@@ -371,13 +371,15 @@ function render(c, P, A, T, I, X) {
   if (n) h += `<div class="g">${kv("Son " + n + " günde tahmin yönü doğru çıktı", hit + " / " + n)}${kv("Tahmin ortalama ne kadar şaştı", "%" + mae.toFixed(2) + " puan")}${kv("Tahminler genelde", Math.abs(bias) < 0.05 ? "dengeli" : bias < 0 ? "biraz düşük kalmış" : "biraz yüksek kalmış")}</div><div class="w">Bu, tahminin geçmişte ne kadar tuttuğunu gösterir. Gelecekte de aynı kadar tutacağı garanti değildir.</div>`;
   h += "</div>";
   // sinyal ve akış
-  const used = new Set();
+  const estMap = {};
+  hist.forEach(x => { if (x.date) estMap[x.date] = x.estimated_change_pct; });
   let flows = [];
   for (let i = Math.max(1, pts.length - 15); i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i], fl = b.total_value - a.total_value * (b.price / a.price), di = b.investor_count - a.investor_count;
     const avg = a.total_value / a.investor_count, pct = fl / a.total_value * 100;
     const whale = Math.abs(pct) >= 2 || (Math.abs(pct) >= 0.5 && Math.abs(fl) / Math.max(1, Math.abs(di)) >= 5 * avg);
-    flows.push({ret: (b.price / a.price - 1) * 100, es: (() => { const q = hist.find(x => !used.has(x) && Math.abs(x.actual_change_pct - (b.price / a.price - 1) * 100) < 0.02); if (q) used.add(q); return q; })(), d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
+    const estVal = estMap[b.date] != null ? estMap[b.date] : null;
+    flows.push({ret: (b.price / a.price - 1) * 100, estVal, d: b.date, p: b.price, v: b.total_value, inv: b.investor_count, di, fl, pct, whale});
   }
   const tot = flows.reduce((s, r) => s + r.fl, 0);
   const Pr = pts.map(x => x.price), Vl = pts.map(x => x.total_value), N = pts.length;
@@ -433,13 +435,16 @@ function render(c, P, A, T, I, X) {
     + `<div class="m" style="margin-top:14px">AL, TUT ya da SAT eğilimi bir tavsiye değildir; fiyatın son seyrine ve para hareketine bakan basit bir kuraldır, yarını bilemez.</div></div>`;
   let ft = "";
   if (flows.length) {
-    ft = `<div class="card"><b>Son 15 gün: günlük getiri, para ve yatırımcı hareketi</b><div class="g">${kv("15 günde giren(+) / çıkan(−) para", f2(tot / 1e6, 1) + " milyon TL", cl(tot))}${kv("Kişi sayısı değişimi", f2(di, 0), cl(di))}${kv("15 günde fiyat değişimi", "%" + f2(ch, 1), cl(ch))}</div><div class="m" style="margin:10px 0 4px">Para: giren (+) ya da çıkan (−), milyon TL. Kişi: fondaki kişi sayısı ve günlük değişimi.</div><table class="keep"><tr><th>Tarih</th><th>Getiri %</th><th>Para</th><th>Kişi</th><th>Değişim</th></tr>`;
-    flows.slice().reverse().forEach(r => ft += `<tr><td>${shortD(r.d)}</td><td class="${cl(r.ret)}">${f2(r.ret)}</td><td class="${cl(r.fl)}">${f2(r.fl / 1e6, 1)}${r.whale ? " !" : ""}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td></tr>`);
-    ft += `</table><div class="m" style="margin-top:10px">“!” işareti, büyük yatırımcı hareketi olası demektir. Giren/çıkan para, fonun toplam parasındaki değişimden fiyat etkisi çıkarılarak yaklaşık bulunur; tek tek kişiler görülmez. Tarihler fonun fiyat tarihleridir.</div></div>`;
+    ft = `<div class="card"><b>Son 15 gün: günlük getiri, tahmin kıyası, para ve yatırımcı hareketi</b><div class="g">${kv("15 günde giren(+) / çıkan(−) para", f2(tot / 1e6, 1) + " milyon TL", cl(tot))}${kv("Kişi sayısı değişimi", f2(di, 0), cl(di))}${kv("15 günde fiyat değişimi", "%" + f2(ch, 1), cl(ch))}</div><div class="m" style="margin:10px 0 4px">Para: giren (+) ya da çıkan (−), milyon TL veya tam TL (üzerine gelince). Kişi: fondaki kişi sayısı ve günlük değişimi. Tahmin %: o gün seans içi/öncesi yapılan tahmini getiri.</div><table class="keep"><tr><th>Tarih</th><th>Gerçek Getiri %</th><th>Tahmin %</th><th>Fark</th><th>Giren/Çıkan Para</th><th>Kişi Sayısı</th><th>Kişi Değişimi</th></tr>`;
+    flows.slice().reverse().forEach(r => {
+      const diff = (r.ret != null && r.estVal != null) ? (r.ret - r.estVal) : null;
+      ft += `<tr><td>${shortD(r.d)}</td><td class="${cl(r.ret)}">${f2(r.ret)}</td><td class="${cl(r.estVal)}">${r.estVal != null ? f2(r.estVal) : "—"}</td><td class="${cl(diff)}">${diff != null ? f2(diff) : "—"}</td><td class="${cl(r.fl)}" title="${n0(r.fl)} TL">${f2(r.fl / 1e6, 2)} M TL${r.whale ? " !" : ""}</td><td>${n0(r.inv)}</td><td class="${cl(r.di)}">${f2(r.di, 0)}</td></tr>`;
+    });
+    ft += `</table><div class="m" style="margin-top:10px">“!” işareti, büyük yatırımcı hareketi olası demektir. Giren/çıkan para sütunu milyon TL cinsinden kısaltılmış gösterilir; tam net TL tutarını görmek için rakamın üzerine gelebilirsiniz. Ayrıca bu para hareketi, TEFAS tarafından doğrudan ham veri olarak yayınlanmaz; fonun toplam portföy büyüklüğünün günlük değişimi ile fiyat artışı/azalışı arasındaki matematiksel farktan (net nakit akışı formülüyle) türetilir.</div></div>`;
   }
   return strip + main + ft + `<details class="card detay" id="detay"><summary>Ayrıntılar: uyarılar, özet, grafik, hisseler, varlıklar, geri test</summary>` + AL.html + plain + MY + CH + T5 + V.html + h + "</table></div>" + BT + `</details>` + gl;
 }
-const MA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+const MA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Kas", "Ara"];
 function monthList(d) {
   if (!d) return [];
   let y = +d.slice(0, 4), m = +d.slice(5, 7);
@@ -463,7 +468,7 @@ async function scan(quiet) {
     localStorage.setItem("ac", $("ac").value);
     const J = await api("/funds", "sort=return_3m&dir=desc&limit=60");
     const it = J.items || [], tf = (parseFloat($("tf").value) || 0) / 100, td = (parseFloat($("td").value) || 0) / 100, dep = net(parseFloat($("mev").value) || 0, td);
-    const sorted = it.every((x, i) => i === 0 || it[i - 1].return_3m >= x.return_3m);
+    const sorted = it.every((i, x) => i === 0 || it[i - 1].return_3m >= x.return_3m);
     const rows = it.filter(x => x.type === "YAT" && !/serbest/i.test((x.category || "") + " " + (x.name || "")) && x.trading_status === "AKTİF" && x.aum >= 1e8 && x.investor_count >= 300 && x.return_3m != null && net(x.return_3m, tf) > dep)
       .map(x => { const d = net(x.return_3m, tf) - dep, sg = (x.volatility_90 || 0) * 0.5; return {x, d, r: sg > 0 ? d / sg : null}; })
       .slice(0, 24);
